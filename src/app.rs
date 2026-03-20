@@ -7,6 +7,7 @@ use crate::audio::{loader::AudioBuffer, player::AudioPlayer};
 use crate::dsp::{spectrogram::SpectrogramData, pitch::PitchTrack, formants::FormantTrack};
 use crate::annotation::textgrid::TextGrid;
 
+
 pub struct PraatlyApp {
     pub buffer:      Option<AudioBuffer>,
     pub spectrogram: Option<SpectrogramData>,
@@ -21,6 +22,15 @@ pub struct PraatlyApp {
     pub show_pitch:       bool,
     pub show_formants:    bool,
     pub show_textgrid:    bool,
+
+    // Help panel toggle
+    pub show_help: bool,
+
+    // Recording state
+    pub recording:        bool,
+    pub recorded_samples: Vec<f32>,
+    pub record_sample_rate: u32,
+    pub save_status:      Option<String>, // feedback message after save attempt
 }
 
 impl PraatlyApp {
@@ -37,6 +47,11 @@ impl PraatlyApp {
             selection: None,
             show_spectrogram: true, show_pitch: true,
             show_formants: true,   show_textgrid: true,
+            show_help: false,
+            recording: false,
+            recorded_samples: Vec::new(),
+            record_sample_rate: 44100,
+            save_status: None,
         };
 
         if let Some(p) = path { app.load_file(p); }
@@ -55,11 +70,58 @@ impl PraatlyApp {
             Err(e) => log::error!("Failed to load {:?}: {}", path, e),
         }
     }
+
+    /// Save recorded samples to a WAV file at the given path.
+    pub fn save_recording_wav(&mut self, path: PathBuf) {
+        if self.recorded_samples.is_empty() {
+            self.save_status = Some("Nothing recorded yet.".to_string());
+            return;
+        }
+
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: self.record_sample_rate,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        };
+
+        match hound::WavWriter::create(&path, spec) {
+            Ok(mut writer) => {
+                for &sample in &self.recorded_samples {
+                    if let Err(e) = writer.write_sample(sample) {
+                        self.save_status = Some(format!("Write error: {}", e));
+                        return;
+                    }
+                }
+                if let Err(e) = writer.finalize() {
+                    self.save_status = Some(format!("Finalize error: {}", e));
+                    return;
+                }
+                self.save_status = Some(format!(
+                    "Saved to {}",
+                    path.file_name().unwrap_or_default().to_string_lossy()
+                ));
+            }
+            Err(e) => {
+                self.save_status = Some(format!("Could not create file: {}", e));
+            }
+        }
+    }
 }
 
 impl eframe::App for PraatlyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Keyboard shortcut: ? toggles help
+        if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
+            self.show_help = !self.show_help;
+        }
+
         crate::ui::toolbar::show(ctx, self);
+
+        // Help panel — renders as a floating window
+        if self.show_help {
+            crate::ui::help::show(ctx, self);
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let h = ui.available_height();
