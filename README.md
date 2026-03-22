@@ -1,7 +1,7 @@
 # Praatly
 
 A modern phonetic analysis workbench built in Rust.
-Spiritual successor to Praat: same capabilities, dramatically better UX.
+Spiritual successor to Praat: same capabilities, dramatically better UX. Or at least that's the intent.
 
 ## Features (in progress)
 
@@ -35,5 +35,5 @@ cargo run --release -- path/to/audio.wav
 
 Praat's DSP is fast because it's C++. Python-based alternatives
 (parselmouth, librosa) are too slow for interactive real-time rendering.
-Rust gives us the same performance with memory safety and a modern
-ecosystem.
+Rust gives the same performance with memory safety and a modern
+ecosystem. Yay Rust! 

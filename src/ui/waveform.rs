@@ -18,10 +18,12 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     let mono = buf.slice_mono(app.view_start, app.view_end);
     if mono.is_empty() { return; }
 
+    // one pixel column = one chunk of samples, drawn as a min/max vertical line.
+    // lossy? yes. fast? also yes. this is a workbench not an oscilloscope. woot.
     let width = rect.width() as usize;
     let chunk  = (mono.len() / width).max(1);
     let mid_y  = rect.center().y;
-    let scale  = rect.height() * 0.44;
+    let scale  = rect.height() * 0.44; // 0.44 — leaves breathing room at top and bottom. lol
     let color  = egui::Color32::from_rgb(72, 152, 210);
 
     for (i, ch) in mono.chunks(chunk).enumerate() {
@@ -45,7 +47,9 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
         );
     }
 
-    // Drag to select
+    // drag to select: first drag sets the anchor, subsequent motion extends from it.
+    // the .min/.max at the end quietly handles dragging leftward without complaint.
+    // guarding against an edge case that shouldn't exist but keeps existing anyway heh
     if response.dragged() {
         if let Some(pos) = response.interact_pointer_pos() {
             let t = (app.view_start + (pos.x - rect.left()) as f64
@@ -57,5 +61,6 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
             }
         }
     }
+    // double-click to clear — simple, obvious, works
     if response.double_clicked() { app.selection = None; }
 }

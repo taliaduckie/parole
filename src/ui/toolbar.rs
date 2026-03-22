@@ -1,5 +1,5 @@
 use eframe::egui;
-use crate::app::PraatlyApp;
+use crate::app::{PraatlyApp, SaveFormat};
 
 pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
     egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
@@ -29,16 +29,10 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
             ui.separator();
 
             // ── Recording ────────────────────────────────────────────────
-            let rec_lbl = if app.recording {
-                // Pulsing red dot via a simple label — nothing fancy
-                "⏺ Stop recording"
-            } else {
-                "⏺ Record"
-            };
+            let rec_lbl = if app.recording { "⏹ Stop recording" } else { "⏺ Record" };
 
             let rec_btn = egui::Button::new(rec_lbl);
             let rec_btn = if app.recording {
-                // Tint the button red while recording so it's obvious
                 rec_btn.fill(egui::Color32::from_rgb(160, 40, 40))
             } else {
                 rec_btn
@@ -48,43 +42,85 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
                 if app.recording {
                     // Stop recording
                     app.recording = false;
+                    app.record_start = None;
 
                     // Offer save dialog immediately
                     if !app.recorded_samples.is_empty() {
+                        let (filter_name, ext, file_name) = match app.save_format {
+                            SaveFormat::Wav => ("WAV audio", vec!["wav"], "recording.wav"),
+                            SaveFormat::Mp3 => ("MP3 audio", vec!["mp3"], "recording.mp3"),
+                        };
                         if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("WAV audio", &["wav"])
-                            .set_file_name("recording.wav")
+                            .add_filter(filter_name, &ext)
+                            .set_file_name(file_name)
                             .save_file()
                         {
-                            app.save_recording_wav(path);
+                            match app.save_format {
+                                SaveFormat::Wav => app.save_recording_wav(path),
+                                SaveFormat::Mp3 => app.save_recording_mp3(path),
+                            }
                         }
                     }
                 } else {
                     // Start recording — clear previous buffer
                     app.recorded_samples.clear();
                     app.recording = true;
+                    app.record_start = Some(std::time::Instant::now());
                     app.save_status = None;
-                    // TODO: wire up cpal input stream in audio/player.rs
-                    // For now this sets the flag; the cpal input callback
-                    // will push samples into app.recorded_samples via Arc<Mutex<>>
+                    // TODO: wire up the actual cpal input stream in audio/player.rs
+                    // so samples get pushed into recorded_samples via Arc<Mutex<>>
+                    // (I will do this. I'm going to do this. I'm en route to doing this!)
                     log::info!("Recording started");
                 }
             }
 
+            // Timer — shown while recording
+            if app.recording {
+                if let Some(start) = app.record_start {
+                    let elapsed = start.elapsed().as_secs();
+                    let mm = elapsed / 60;
+                    let ss = elapsed % 60;
+                    ui.label(
+                        egui::RichText::new(format!("  {:02}:{:02}", mm, ss))
+                            .color(egui::Color32::from_rgb(255, 90, 90))
+                            .monospace(),
+                    );
+                    ctx.request_repaint(); // keep the clock ticking
+                }
+            }
+
+            // Format selector — always visible so user can pick before recording
+            egui::ComboBox::from_id_source("save_format")
+                .selected_text(match app.save_format {
+                    SaveFormat::Wav => "WAV",
+                    SaveFormat::Mp3 => "MP3",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut app.save_format, SaveFormat::Wav, "WAV");
+                    ui.selectable_value(&mut app.save_format, SaveFormat::Mp3, "MP3");
+                });
+
             // Save button — available after recording without re-recording
             if !app.recorded_samples.is_empty() && !app.recording {
                 if ui.button("💾 Save…").clicked() {
+                    let (filter_name, ext, file_name) = match app.save_format {
+                        SaveFormat::Wav => ("WAV audio", vec!["wav"], "recording.wav"),
+                        SaveFormat::Mp3 => ("MP3 audio", vec!["mp3"], "recording.mp3"),
+                    };
                     if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("WAV audio", &["wav"])
-                        .set_file_name("recording.wav")
+                        .add_filter(filter_name, &ext)
+                        .set_file_name(file_name)
                         .save_file()
                     {
-                        app.save_recording_wav(path);
+                        match app.save_format {
+                            SaveFormat::Wav => app.save_recording_wav(path),
+                            SaveFormat::Mp3 => app.save_recording_mp3(path),
+                        }
                     }
                 }
             }
 
-            // Status message (appears briefly after save attempt)
+            // Status message (appears real fast after save attempt)
             if let Some(status) = &app.save_status {
                 ui.separator();
                 ui.label(

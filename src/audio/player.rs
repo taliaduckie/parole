@@ -1,4 +1,6 @@
 //! Audio playback via cpal.
+//! "playback" is generous — this module bravely holds state while waiting for
+//! a cpal output stream to be wired up. it's doing great. we love it here.
 
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -23,11 +25,14 @@ impl AudioPlayer {
         *self.position.lock() = 0;
         self.playing = true;
         // TODO: wire up cpal output stream
+        // (I will wire this up. I'm going to wire this up. Look at me, about to wire this up.)
         log::info!("playback start @ {}Hz", sample_rate);
     }
 
+    // this function has one job and handles it with complete dignity
     pub fn stop(&mut self) { self.playing = false; }
 
+    // unused and it knows it. patiently waiting for the playback cursor to matter.
     pub fn position_secs(&self, sr: u32) -> f64 {
         *self.position.lock() as f64 / sr as f64
     }

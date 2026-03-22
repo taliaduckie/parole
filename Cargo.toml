@@ -24,8 +24,8 @@ env_logger = "0.11"
 parking_lot = "0.12"
 rfd = "0.14"
 hound = "3.5.1"
+mp3lame-encoder = "0.2"
 
 [profile.release]
 opt-level = 3
 lto = true
-hound = "3.5"

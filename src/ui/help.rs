@@ -1,7 +1,8 @@
 /// Help panel — a floating window explaining what everything does.
 ///
 /// Toggled by the ? Help button in the toolbar, or F1.
-/// Written to be genuinely useful rather than just existing.
+/// Written to be genuinely useful rather than just existing. Hi praat 
+/// NO TEA NO SHADE
 
 use eframe::egui;
 use crate::app::PraatlyApp;
@@ -105,13 +106,13 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
         });
 }
 
-/// Render a bold section heading.
+/// Render section heading
 fn section(ui: &mut egui::Ui, title: &str) {
     ui.label(egui::RichText::new(title).strong());
     ui.add_space(2.0);
 }
 
-/// Render a two-column key/value row.
+/// Render two-column key/value row
 fn row(ui: &mut egui::Ui, key: &str, value: &str) {
     ui.horizontal_wrapped(|ui| {
         ui.label(egui::RichText::new(format!("{key}:")).strong().small());

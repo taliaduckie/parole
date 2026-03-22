@@ -1,5 +1,0 @@
-cargo:rerun-if-changed=build
-cargo:rustc-link-search=native=/Users/taliahonikman/parole/target/debug/build/mlua-sys-80d25822a278c41e/out/lua-build/lib
-cargo:rustc-link-lib=static=lua5.4
-cargo:include=/Users/taliahonikman/parole/target/debug/build/mlua-sys-80d25822a278c41e/out/lua-build/include
-cargo:lib=/Users/taliahonikman/parole/target/debug/build/mlua-sys-80d25822a278c41e/out/lua-build/lib
