@@ -5,9 +5,6 @@
 
 use eframe::egui;
 use crate::app::PraatlyApp;
-use crate::dsp::{
-    formants::FormantSettings, pitch::PitchSettings, spectrogram::SpectrogramSettings,
-};
 
 pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
     egui::Window::new("Settings")
@@ -52,9 +49,6 @@ fn spectrogram_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut Praatly
 
     app.spec_settings = s;
 
-    let dirty = s != SpectrogramSettings::default()
-        || app.spectrogram_job.is_none() && app.spectrogram.is_none();
-    let _ = dirty; // dirty-state hinting could go here later — keeping it simple for now
     if ui.button("Apply").clicked() {
         app.respawn_spectrogram(ctx);
     }
