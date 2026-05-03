@@ -114,3 +114,79 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spec(magnitudes: Vec<Vec<f32>>, n_fft: usize, sample_rate: u32) -> SpectrogramData {
+        SpectrogramData { magnitudes, n_fft, hop_size: 256, sample_rate }
+    }
+
+    #[test]
+    fn build_image_dimensions_match_spectrogram() {
+        let s = spec(vec![vec![0.0; 5]; 7], 8, 16000); // 7 frames × 5 bins
+        let img = build_image(&s);
+        assert_eq!(img.size, [7, 5]);
+        assert_eq!(img.pixels.len(), 35);
+    }
+
+    #[test]
+    fn build_image_silence_produces_uniform_dark_pixels() {
+        let s = spec(vec![vec![0.0; 4]; 3], 6, 16000);
+        let img = build_image(&s);
+        // All zeros → norm = log10(1) = 0 → viridis(0).
+        let expected = viridis(0.0);
+        for px in &img.pixels { assert_eq!(*px, expected); }
+    }
+
+    #[test]
+    fn build_image_flips_y_so_bin0_lands_at_bottom_row() {
+        // Single frame with a peak only in bin 0 (DC). After the y-flip,
+        // the brightest pixel should be at the bottom row of the image.
+        let s = spec(vec![vec![1.0, 0.0, 0.0, 0.0]], 6, 16000);
+        let img = build_image(&s);
+        let n_frames = img.size[0];
+        let n_bins = img.size[1];
+        assert_eq!(n_frames, 1);
+        assert_eq!(n_bins, 4);
+        // Bottom row index = n_bins - 1; only column = 0.
+        let bottom = img.pixels[(n_bins - 1) * n_frames];
+        // The 1.0 magnitude at bin 0 should map to the brightest viridis output.
+        let bright = viridis(1.0);
+        assert_eq!(bottom, bright);
+        // Top row (bin 3, all zeros) should be the silence color.
+        let top = img.pixels[0];
+        assert_eq!(top, viridis(0.0));
+    }
+
+    #[test]
+    fn build_image_handles_empty_spectrogram() {
+        let s = spec(vec![], 8, 16000);
+        let img = build_image(&s);
+        // n_frames = 0, n_bins = 5 → 0×5 = 0 pixels. No panic.
+        assert_eq!(img.size[0], 0);
+        assert!(img.pixels.is_empty());
+    }
+
+    #[test]
+    fn viridis_endpoints_differ() {
+        let dark = viridis(0.0);
+        let bright = viridis(1.0);
+        assert_ne!(dark, bright);
+    }
+
+    #[test]
+    fn build_image_normalises_to_global_max() {
+        // Two frames: [0.5, 0.0] and [0.0, 0.5]. Both peaks are equal so they
+        // should map to the same color after global-max normalisation.
+        // n_fft = 2 → n_bins() = 2, matching the frame data above.
+        let s = spec(vec![vec![0.5, 0.0], vec![0.0, 0.5]], 2, 16000);
+        let img = build_image(&s);
+        // n_frames = 2, n_bins = 2. Pixel (frame=0, bin=0) is at row=1, col=0;
+        // pixel (frame=1, bin=1) is at row=0, col=1.
+        let p_lo = img.pixels[1 * 2 + 0];
+        let p_hi = img.pixels[0 * 2 + 1];
+        assert_eq!(p_lo, p_hi);
+    }
+}
