@@ -16,14 +16,26 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
             ui.separator();
 
             // ── Playback ──────────────────────────────────────────────────
-            let play_lbl = if app.player.playing { "⏹ Stop" } else { "▶ Play" };
+            let is_playing = app.player.is_playing();
+            let play_lbl = if is_playing { "⏹ Stop" } else { "▶ Play" };
             if ui.button(play_lbl).clicked() {
-                if app.player.playing {
+                if is_playing {
                     app.player.stop();
                 } else if let Some(buf) = &app.buffer {
                     let (s, e) = app.selection.unwrap_or((app.view_start, app.view_end));
-                    app.player.play(buf.slice_mono(s, e), buf.sample_rate);
+                    if let Err(err) = app.player.play(buf.slice_mono(s, e), buf.sample_rate) {
+                        app.save_status = Some(format!("Playback failed: {}", err));
+                        log::error!("Playback failed: {}", err);
+                    }
                 }
+            }
+            if let Some(err) = app.player.take_runtime_error() {
+                app.save_status = Some(err);
+            }
+            // Repaint while playing so the Play→Stop label flips on its own when
+            // the audio thread reaches end-of-buffer.
+            if is_playing {
+                ctx.request_repaint();
             }
 
             ui.separator();

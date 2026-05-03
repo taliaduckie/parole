@@ -92,10 +92,6 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
                 egui::RichText::new(
                     "• Formant extraction (LPC root-finding) is currently stubbed — \
                        F1/F2/F3 overlays are not yet rendered.\n\
-                     • Audio playback (cpal output stream) is scaffolded but not \
-                       fully wired — the Play button sets state but may not produce sound yet.\n\
-                     • Recording captures state but the cpal input stream needs \
-                       wiring in src/audio/player.rs before samples are actually collected.\n\
                      • TextGrid import/export (.TextGrid format) is not yet implemented."
                 )
                 .weak()
