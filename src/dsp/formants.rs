@@ -312,6 +312,26 @@ mod tests {
     }
 
     #[test]
+    fn roots_to_formants_respects_max_hz_cap() {
+        // Same roots; same sr; vary max_hz. With a 4 kHz cap, the 3500 Hz
+        // candidate survives and shows up as F3. With a 2 kHz cap it's dropped
+        // and only the lower two fill the slots.
+        let sr = 8000u32;
+        let theta = |hz: f32| 2.0 * std::f32::consts::PI * hz / sr as f32;
+        let roots = vec![
+            Complex::from_polar(0.95, theta(500.0)),
+            Complex::from_polar(0.95, theta(1500.0)),
+            Complex::from_polar(0.95, theta(3500.0)),
+        ];
+        let lax = roots_to_formants(&roots, sr, 4000.0);
+        assert!(lax.f3.is_some(), "expected F3 to survive the 4 kHz cap");
+        let strict = roots_to_formants(&roots, sr, 2000.0);
+        assert!(strict.f3.is_none(), "expected F3 to be dropped under the 2 kHz cap");
+        assert!(strict.f1.is_some());
+        assert!(strict.f2.is_some());
+    }
+
+    #[test]
     fn extract_finds_a_formant_for_synthetic_resonator() {
         // Drive a 2-pole resonator at 1000 Hz with white-ish noise; extract should
         // find F1 near 1000 Hz somewhere in the middle of the track.

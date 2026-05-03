@@ -172,4 +172,41 @@ mod tests {
         let track = extract(&buf, PitchSettings::default());
         assert!(track.frames.is_empty());
     }
+
+    #[test]
+    fn high_voicing_threshold_marks_more_frames_unvoiced() {
+        // Same input, two thresholds: the strict one should kill at least as many frames.
+        let buf = sine(200.0, 16000, 1.0);
+        let lax = extract(&buf, PitchSettings { voicing_threshold: 0.30, ..Default::default() });
+        let strict = extract(&buf, PitchSettings { voicing_threshold: 0.95, ..Default::default() });
+        let lax_voiced = lax.frames.iter().filter(|f| f.is_some()).count();
+        let strict_voiced = strict.frames.iter().filter(|f| f.is_some()).count();
+        assert!(strict_voiced <= lax_voiced,
+            "strict threshold somehow kept more voiced frames: strict={}, lax={}",
+            strict_voiced, lax_voiced);
+    }
+
+    #[test]
+    fn pitch_range_outside_target_makes_signal_unvoiced() {
+        // 200 Hz sine searched in 400-600 Hz window — should find nothing,
+        // because the true period's lag is outside the (min_lag, max_lag) range.
+        let buf = sine(200.0, 16000, 1.0);
+        let track = extract(&buf, PitchSettings {
+            min_hz: 400.0, max_hz: 600.0, voicing_threshold: 0.45,
+        });
+        let voiced = track.frames.iter().filter(|f| f.is_some()).count();
+        // I'll allow a tiny stragglers — but the great majority should be None.
+        assert!(voiced * 5 < track.frames.len(),
+            "expected mostly-unvoiced for out-of-range sine, got {}/{}",
+            voiced, track.frames.len());
+    }
+
+    #[test]
+    fn extract_does_not_panic_when_min_exceeds_max() {
+        // The clamp inside extract should keep us out of the panic zone.
+        let buf = sine(200.0, 16000, 0.2);
+        let _ = extract(&buf, PitchSettings {
+            min_hz: 800.0, max_hz: 100.0, voicing_threshold: 0.45,
+        });
+    }
 }
