@@ -1,7 +1,7 @@
-# Praatly
+# Parole
 
-A modern phonetic analysis workbench built in Rust.
-Spiritual successor to Praat: same capabilities, dramatically better UX. Or at least that's the intent.
+A phonetic analysis workbench built in Rust.
+Basically spiritual successor to Praat: same capabilities, w dramatically better UX. at least that's the intent.
 
 ## Features (in progress)
 

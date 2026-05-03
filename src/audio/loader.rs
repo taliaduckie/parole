@@ -85,3 +85,101 @@ pub fn load_audio(path: &Path) -> Result<AudioBuffer> {
 
     Ok(AudioBuffer { samples: all_samples, sample_rate, channels })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx_eq(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-6
+    }
+
+    #[test]
+    fn duration_secs_mono() {
+        let buf = AudioBuffer { samples: vec![0.0; 44100], sample_rate: 44100, channels: 1 };
+        assert!((buf.duration_secs() - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn duration_secs_stereo() {
+        // 88200 interleaved samples / (44100 * 2) = 1.0s
+        let buf = AudioBuffer { samples: vec![0.0; 88200], sample_rate: 44100, channels: 2 };
+        assert!((buf.duration_secs() - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn mono_passthrough_when_already_mono() {
+        let buf = AudioBuffer { samples: vec![0.1, 0.2, 0.3], sample_rate: 44100, channels: 1 };
+        assert_eq!(buf.mono(), vec![0.1, 0.2, 0.3]);
+    }
+
+    #[test]
+    fn mono_downmixes_stereo() {
+        let buf = AudioBuffer {
+            samples: vec![1.0, -1.0, 0.4, 0.6, 0.0, 0.0],
+            sample_rate: 44100,
+            channels: 2,
+        };
+        let m = buf.mono();
+        assert_eq!(m.len(), 3);
+        assert!(approx_eq(m[0], 0.0));
+        assert!(approx_eq(m[1], 0.5));
+        assert!(approx_eq(m[2], 0.0));
+    }
+
+    #[test]
+    fn mono_downmixes_six_channels() {
+        // 5.1 audio: average all 6 channels
+        let buf = AudioBuffer {
+            samples: vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            sample_rate: 48000,
+            channels: 6,
+        };
+        let m = buf.mono();
+        assert_eq!(m.len(), 1);
+        assert!(approx_eq(m[0], 3.5));
+    }
+
+    #[test]
+    fn slice_mono_normal_range() {
+        // 4 samples, 4Hz → 1s long. Slice 0.25..0.75 → samples [1,2].
+        let buf = AudioBuffer {
+            samples: vec![10.0, 11.0, 12.0, 13.0],
+            sample_rate: 4,
+            channels: 1,
+        };
+        assert_eq!(buf.slice_mono(0.25, 0.75), vec![11.0, 12.0]);
+    }
+
+    #[test]
+    fn slice_mono_clamps_end_past_buffer() {
+        let buf = AudioBuffer {
+            samples: vec![1.0, 2.0, 3.0, 4.0],
+            sample_rate: 4,
+            channels: 1,
+        };
+        assert_eq!(buf.slice_mono(0.0, 100.0), vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn slice_mono_zero_length_when_start_equals_end() {
+        let buf = AudioBuffer {
+            samples: vec![1.0, 2.0, 3.0, 4.0],
+            sample_rate: 4,
+            channels: 1,
+        };
+        assert!(buf.slice_mono(0.5, 0.5).is_empty());
+    }
+
+    #[test]
+    fn slice_mono_works_on_stereo_input() {
+        // Stereo source gets downmixed first, then sliced.
+        let buf = AudioBuffer {
+            samples: vec![1.0, 3.0, 2.0, 4.0, 0.0, 0.0, 5.0, 7.0],
+            sample_rate: 4,
+            channels: 2,
+        };
+        // mono = [2, 3, 0, 6]; slice 0.25..0.75 → [3, 0]
+        assert_eq!(buf.slice_mono(0.25, 0.75), vec![3.0, 0.0]);
+    }
+}

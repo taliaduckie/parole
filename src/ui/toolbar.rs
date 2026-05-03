@@ -29,19 +29,21 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
             ui.separator();
 
             // ── Recording ────────────────────────────────────────────────
-            let rec_lbl = if app.recording { "⏹ Stop recording" } else { "⏺ Record" };
+            let recording = app.recorder.is_recording();
+            let rec_lbl = if recording { "⏹ Stop recording" } else { "⏺ Record" };
 
             let rec_btn = egui::Button::new(rec_lbl);
-            let rec_btn = if app.recording {
+            let rec_btn = if recording {
                 rec_btn.fill(egui::Color32::from_rgb(160, 40, 40))
             } else {
                 rec_btn
             };
 
             if ui.add(rec_btn).clicked() {
-                if app.recording {
-                    // Stop recording
-                    app.recording = false;
+                if recording {
+                    // Stop recording: drop the cpal stream, drain samples.
+                    app.recorded_samples = app.recorder.stop();
+                    app.record_sample_rate = app.recorder.sample_rate;
                     app.record_start = None;
 
                     // Offer save dialog immediately
@@ -60,22 +62,34 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
                                 SaveFormat::Mp3 => app.save_recording_mp3(path),
                             }
                         }
+                    } else {
+                        app.save_status = Some("Nothing recorded.".to_string());
                     }
                 } else {
-                    // Start recording — clear previous buffer
+                    // Start recording
                     app.recorded_samples.clear();
-                    app.recording = true;
-                    app.record_start = Some(std::time::Instant::now());
                     app.save_status = None;
-                    // TODO: wire up the actual cpal input stream in audio/player.rs
-                    // so samples get pushed into recorded_samples via Arc<Mutex<>>
-                    // (I will do this. I'm going to do this. I'm en route to doing this!)
-                    log::info!("Recording started");
+                    match app.recorder.start() {
+                        Ok(()) => {
+                            app.record_sample_rate = app.recorder.sample_rate;
+                            app.record_start = Some(std::time::Instant::now());
+                            log::info!("Recording started @ {}Hz", app.record_sample_rate);
+                        }
+                        Err(e) => {
+                            app.save_status = Some(format!("Recording failed: {}", e));
+                            log::error!("Recording failed: {}", e);
+                        }
+                    }
                 }
             }
 
+            // Surface any error reported asynchronously by the cpal callback.
+            if let Some(err) = app.recorder.take_runtime_error() {
+                app.save_status = Some(err);
+            }
+
             // Timer — shown while recording
-            if app.recording {
+            if recording {
                 if let Some(start) = app.record_start {
                     let elapsed = start.elapsed().as_secs();
                     let mm = elapsed / 60;
@@ -101,7 +115,7 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
                 });
 
             // Save button — available after recording without re-recording
-            if !app.recorded_samples.is_empty() && !app.recording {
+            if !app.recorded_samples.is_empty() && !recording {
                 if ui.button("💾 Save…").clicked() {
                     let (filter_name, ext, file_name) = match app.save_format {
                         SaveFormat::Wav => ("WAV audio", vec!["wav"], "recording.wav"),

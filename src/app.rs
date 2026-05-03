@@ -5,7 +5,7 @@ use eframe::egui;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use crate::audio::{loader::AudioBuffer, player::AudioPlayer};
+use crate::audio::{loader::AudioBuffer, player::AudioPlayer, recorder::Recorder};
 use crate::dsp::{spectrogram::SpectrogramData, pitch::PitchTrack, formants::FormantTrack};
 use crate::annotation::textgrid::TextGrid;
 
@@ -35,7 +35,7 @@ pub struct PraatlyApp {
     pub show_help: bool,
 
     // Recording state
-    pub recording:          bool,
+    pub recorder:           Recorder,
     pub record_start:       Option<Instant>,
     pub recorded_samples:   Vec<f32>,
     pub record_sample_rate: u32,
@@ -58,7 +58,7 @@ impl PraatlyApp {
             show_spectrogram: true, show_pitch: true,
             show_formants: true,   show_textgrid: true,
             show_help: false,
-            recording: false,
+            recorder: Recorder::new(),
             record_start: None,
             recorded_samples: Vec::new(),
             record_sample_rate: 44100,
@@ -91,35 +91,17 @@ impl PraatlyApp {
             self.save_status = Some("Nothing recorded yet.".to_string());
             return;
         }
-
-        let spec = hound::WavSpec {
-            channels: 1,
-            sample_rate: self.record_sample_rate,
-            bits_per_sample: 32,
-            sample_format: hound::SampleFormat::Float,
-        };
-
-        match hound::WavWriter::create(&path, spec) {
-            Ok(mut writer) => {
-                for &sample in &self.recorded_samples {
-                    if let Err(e) = writer.write_sample(sample) {
-                        self.save_status = Some(format!("Write error: {}", e));
-                        return;
-                    }
-                }
-                if let Err(e) = writer.finalize() {
-                    self.save_status = Some(format!("Finalize error: {}", e));
-                    return;
-                }
-                self.save_status = Some(format!(
-                    "Saved to {}",
-                    path.file_name().unwrap_or_default().to_string_lossy()
-                ));
-            }
-            Err(e) => {
-                self.save_status = Some(format!("Could not create file: {}", e));
-            }
-        }
+        self.save_status = Some(match crate::audio::encoder::write_wav_mono_f32(
+            &path,
+            &self.recorded_samples,
+            self.record_sample_rate,
+        ) {
+            Ok(()) => format!(
+                "Saved to {}",
+                path.file_name().unwrap_or_default().to_string_lossy()
+            ),
+            Err(e) => format!("WAV save failed: {}", e),
+        });
     }
 
     /// Save recorded samples to an MP3 file at the given path.
@@ -128,59 +110,17 @@ impl PraatlyApp {
             self.save_status = Some("Nothing recorded yet.".to_string());
             return;
         }
-
-        use mp3lame_encoder::{Builder, FlushNoGap, MonoPcm};
-
-        let Some(mut builder) = Builder::new() else {
-            self.save_status = Some("Failed to create MP3 encoder.".to_string());
-            return;
-        };
-
-        let ok = builder.set_num_channels(1).is_ok()
-            && builder.set_sample_rate(self.record_sample_rate).is_ok()
-            && builder.set_brate(mp3lame_encoder::Bitrate::Kbps128).is_ok()
-            && builder.set_quality(mp3lame_encoder::Quality::Best).is_ok();
-
-        if !ok {
-            self.save_status = Some("Failed to configure MP3 encoder.".to_string());
-            return;
-        }
-
-        let mut encoder = match builder.build() {
-            Ok(e) => e,
-            Err(e) => {
-                self.save_status = Some(format!("Failed to build MP3 encoder: {:?}", e));
-                return;
-            }
-        };
-
-        let pcm: Vec<i16> = self.recorded_samples.iter()
-            .map(|&s| (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
-            .collect();
-
-        let mut mp3_data = Vec::new();
-        if encoder.encode(MonoPcm(&pcm), &mut mp3_data).is_err()
-            || encoder.flush::<FlushNoGap>(&mut mp3_data).is_err()
-        {
-            self.save_status = Some("MP3 encoding failed.".to_string());
-            return;
-        }
-
-        // mp3lame-encoder returns Vec<MaybeUninit<u8>> instead of Vec<u8>.
-        // this is load-bearing duct tape on someone else's architecture decision.
-        // SAFETY: all bytes were written by the encoder so assume_init is fine.
-        // I've named it; I'm moving on. woot.
-        let mp3_bytes: Vec<u8> = mp3_data.into_iter()
-            .map(|b| unsafe { b.assume_init() })
-            .collect();
-
-        match std::fs::write(&path, &mp3_bytes) {
-            Ok(_) => self.save_status = Some(format!(
+        self.save_status = Some(match crate::audio::encoder::write_mp3_mono(
+            &path,
+            &self.recorded_samples,
+            self.record_sample_rate,
+        ) {
+            Ok(()) => format!(
                 "Saved to {}",
                 path.file_name().unwrap_or_default().to_string_lossy()
-            )),
-            Err(e) => self.save_status = Some(format!("Could not write MP3: {}", e)),
-        }
+            ),
+            Err(e) => format!("MP3 save failed: {}", e),
+        });
     }
 }
 
