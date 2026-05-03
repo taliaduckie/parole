@@ -74,7 +74,7 @@ pub fn extract(buf: &AudioBuffer, settings: FormantSettings) -> FormantTrack {
                 for c in poly.iter_mut() { *c /= lead; }
             }
             let roots = find_roots(&poly);
-            roots_to_formants(&roots, sr)
+            roots_to_formants(&roots, sr, settings.max_formant_hz)
         })
         .collect();
 
@@ -168,10 +168,14 @@ pub(crate) fn find_roots(coeffs: &[f32]) -> Vec<Complex<f32>> {
 /// Convert LPC polynomial roots to F1/F2/F3.
 /// Each root z = r·e^(jθ) with positive imaginary part contributes a candidate
 /// formant at frequency θ·sr/(2π) and bandwidth -ln(r)·sr/π. We discard wide
-/// bands and out-of-band candidates, then sort by frequency.
-pub(crate) fn roots_to_formants(roots: &[Complex<f32>], sr: u32) -> FormantFrame {
+/// bands and out-of-band candidates, then sort by frequency. `max_hz` caps the
+/// upper search range — anything above is treated as out-of-band.
+pub(crate) fn roots_to_formants(roots: &[Complex<f32>], sr: u32, max_hz: f32) -> FormantFrame {
     let sr_f = sr as f32;
     let nyquist = sr_f / 2.0;
+    // Hard upper bound: never search above Nyquist - 50 (no real spectrum
+    // up there) regardless of what max_hz claims.
+    let upper = max_hz.min(nyquist - 50.0);
     let mut formants: Vec<f32> = roots
         .iter()
         .filter(|z| z.im > 0.0)
@@ -182,9 +186,9 @@ pub(crate) fn roots_to_formants(roots: &[Complex<f32>], sr: u32) -> FormantFrame
             if !(1e-3..1.0).contains(&r) { return None; }
             let freq = z.arg().abs() * sr_f / (2.0 * std::f32::consts::PI);
             let bw = -r.ln() * sr_f / std::f32::consts::PI;
-            // Speech formant band: ~90 Hz to a hair below Nyquist; bandwidth
+            // Speech formant band: ~90 Hz up to the user-set ceiling; bandwidth
             // cap of 400 Hz screens out spurious wide poles.
-            if freq < 90.0 || freq > nyquist - 50.0 { return None; }
+            if freq < 90.0 || freq > upper { return None; }
             if bw > 400.0 { return None; }
             Some(freq)
         })
