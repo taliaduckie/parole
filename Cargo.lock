@@ -2843,6 +2843,7 @@ dependencies = [
  "serde",
  "serde_json",
  "symphonia",
+ "tempfile",
 ]
 
 [[package]]

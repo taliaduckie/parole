@@ -182,4 +182,71 @@ mod tests {
         // mono = [2, 3, 0, 6]; slice 0.25..0.75 → [3, 0]
         assert_eq!(buf.slice_mono(0.25, 0.75), vec![3.0, 0.0]);
     }
+
+    fn write_pcm16_wav(path: &std::path::Path, samples: &[i16], sample_rate: u32, channels: u16) {
+        let spec = hound::WavSpec {
+            channels,
+            sample_rate,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::create(path, spec).unwrap();
+        for &s in samples {
+            w.write_sample(s).unwrap();
+        }
+        w.finalize().unwrap();
+    }
+
+    #[test]
+    fn load_audio_decodes_16bit_pcm_mono() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pcm16.wav");
+        let samples: Vec<i16> = (0..1000).map(|i| (i * 30) as i16).collect();
+        write_pcm16_wav(&path, &samples, 22050, 1);
+
+        let loaded = super::load_audio(&path).unwrap();
+        assert_eq!(loaded.sample_rate, 22050);
+        assert_eq!(loaded.channels, 1);
+        assert_eq!(loaded.samples.len(), samples.len());
+        // Symphonia normalises i16 → f32 in [-1, 1]
+        for (i, &s) in samples.iter().enumerate() {
+            let expected = s as f32 / i16::MAX as f32;
+            assert!(
+                (loaded.samples[i] - expected).abs() < 1e-3,
+                "sample {}: got {}, expected {}",
+                i, loaded.samples[i], expected
+            );
+        }
+    }
+
+    #[test]
+    fn load_audio_decodes_16bit_pcm_stereo_interleaved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pcm16-stereo.wav");
+        // Interleaved L,R,L,R…
+        let samples: Vec<i16> = vec![100, -100, 200, -200, 300, -300];
+        write_pcm16_wav(&path, &samples, 44100, 2);
+
+        let loaded = super::load_audio(&path).unwrap();
+        assert_eq!(loaded.channels, 2);
+        // Interleaved samples are preserved as-is.
+        assert_eq!(loaded.samples.len(), 6);
+        // duration = 3 frames / 44100Hz
+        assert!((loaded.duration_secs() - 3.0 / 44100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn load_audio_errors_on_missing_file() {
+        let result = super::load_audio(std::path::Path::new("/definitely/not/a/real/path.wav"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_audio_errors_on_garbage_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("garbage.wav");
+        std::fs::write(&path, b"this is not audio data, not even close").unwrap();
+        let result = super::load_audio(&path);
+        assert!(result.is_err());
+    }
 }
