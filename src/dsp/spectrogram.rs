@@ -5,6 +5,20 @@
 use rustfft::{FftPlanner, num_complex::Complex};
 use crate::audio::loader::AudioBuffer;
 
+/// User-tweakable knobs. Sensible defaults; the slider in the settings panel
+/// is what produces "interesting" values.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpectrogramSettings {
+    pub window_size: usize,
+    pub overlap:     f64,
+}
+
+impl Default for SpectrogramSettings {
+    fn default() -> Self {
+        Self { window_size: 1024, overlap: 0.75 }
+    }
+}
+
 pub struct SpectrogramData {
     pub magnitudes:  Vec<Vec<f32>>,
     pub n_fft:       usize,

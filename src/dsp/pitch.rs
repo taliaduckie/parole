@@ -16,23 +16,45 @@ impl PitchTrack {
     }
 }
 
-pub fn extract(buf: &AudioBuffer) -> PitchTrack {
+/// User-tweakable knobs for pitch extraction. Window and hop stay internal —
+/// users mostly want to tell us where to look for F0, and how strict to be.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PitchSettings {
+    pub min_hz:             f32,
+    pub max_hz:             f32,
+    pub voicing_threshold:  f32,
+}
+
+impl Default for PitchSettings {
+    fn default() -> Self {
+        // 75–600 Hz covers most adult voices comfortably; 0.45 was the
+        // pre-existing magic number, which I'm choosing to inherit rather than relitigate.
+        Self { min_hz: 75.0, max_hz: 600.0, voicing_threshold: 0.45 }
+    }
+}
+
+pub fn extract(buf: &AudioBuffer, settings: PitchSettings) -> PitchTrack {
     let mono    = buf.mono();
     let sr      = buf.sample_rate as f32;
     let window  = 1024usize;
     let hop     = 256usize;
-    let min_lag = (sr / 600.0).ceil()  as usize; // 600 Hz upper bound — if your voice goes higher, respect
-    let max_lag = (sr / 75.0).floor()  as usize;  // 75 Hz lower bound — below this we're in bass guitar territory drnrnrnr
+    // Defensive clamp: max_hz < min_hz would give an empty lag range and
+    // every frame returning None — confusing for the user, prevents the panic
+    // that comes from RangeInclusive<usize>::start > end.
+    let lo = settings.min_hz.max(1.0);
+    let hi = settings.max_hz.max(lo + 1.0);
+    let min_lag = (sr / hi).ceil()  as usize;
+    let max_lag = (sr / lo).floor() as usize;
 
     let frames: Vec<Option<f32>> = mono
         .windows(window).step_by(hop)
-        .map(|frame| acf_f0(frame, min_lag, max_lag, sr))
+        .map(|frame| acf_f0(frame, min_lag, max_lag, sr, settings.voicing_threshold))
         .collect();
 
     PitchTrack { frames, hop_size: hop, sample_rate: buf.sample_rate }
 }
 
-fn acf_f0(frame: &[f32], min_lag: usize, max_lag: usize, sr: f32) -> Option<f32> {
+fn acf_f0(frame: &[f32], min_lag: usize, max_lag: usize, sr: f32, threshold: f32) -> Option<f32> {
     let n      = frame.len();
     let energy: f32 = frame.iter().map(|&s| s * s).sum();
     // silence check — if there's nothing there, we don't need to pretend otherwise
@@ -48,8 +70,8 @@ fn acf_f0(frame: &[f32], min_lag: usize, max_lag: usize, sr: f32) -> Option<f32>
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         .unwrap_or((min_lag, 0.0));
 
-    // empirically reasonable for voiced/unvoiced separation. theoretically: whatever
-    if best_corr > 0.45 { Some(sr / best_lag as f32) } else { None }
+    // threshold is the user's call now — voicing is partly opinion anyway
+    if best_corr > threshold { Some(sr / best_lag as f32) } else { None }
 }
 
 #[cfg(test)]
@@ -76,7 +98,7 @@ mod tests {
     #[test]
     fn extract_finds_200hz_sine() {
         let buf = sine(200.0, 16000, 1.0);
-        let track = extract(&buf);
+        let track = extract(&buf, PitchSettings::default());
         let med = median_voiced(&track).expect("expected voiced frames for a clean sine");
         assert!((med - 200.0).abs() < 5.0, "median F0 was {}, expected ~200", med);
     }
@@ -84,7 +106,7 @@ mod tests {
     #[test]
     fn extract_finds_440hz_sine() {
         let buf = sine(440.0, 22050, 0.5);
-        let track = extract(&buf);
+        let track = extract(&buf, PitchSettings::default());
         let med = median_voiced(&track).expect("expected voiced frames");
         assert!((med - 440.0).abs() < 10.0, "median F0 was {}, expected ~440", med);
     }
@@ -93,7 +115,7 @@ mod tests {
     fn extract_finds_low_pitch_near_floor() {
         // 100 Hz is comfortably above the 75 Hz lower bound — male voice territory.
         let buf = sine(100.0, 16000, 1.0);
-        let track = extract(&buf);
+        let track = extract(&buf, PitchSettings::default());
         let med = median_voiced(&track).expect("expected voiced frames");
         assert!((med - 100.0).abs() < 5.0, "median F0 was {}, expected ~100", med);
     }
@@ -102,7 +124,7 @@ mod tests {
     fn extract_marks_silence_as_unvoiced() {
         // pure silence: nothing in there to find. and we admit it.
         let buf = AudioBuffer { samples: vec![0.0; 16000], sample_rate: 16000, channels: 1 };
-        let track = extract(&buf);
+        let track = extract(&buf, PitchSettings::default());
         assert!(
             track.frames.iter().all(|f| f.is_none()),
             "expected all-None for silence, got {:?}",
@@ -124,7 +146,7 @@ mod tests {
             })
             .collect();
         let buf = AudioBuffer { samples, sample_rate: 16000, channels: 1 };
-        let track = extract(&buf);
+        let track = extract(&buf, PitchSettings::default());
         let voiced = track.frames.iter().filter(|f| f.is_some()).count();
         let total = track.frames.len();
         // I'll allow a few stray frames — the ACF is allowed its little hallucinations.
@@ -147,7 +169,7 @@ mod tests {
     fn extract_handles_short_buffer_gracefully() {
         // shorter than the analysis window — windows() yields nothing, no panic.
         let buf = AudioBuffer { samples: vec![0.1; 100], sample_rate: 16000, channels: 1 };
-        let track = extract(&buf);
+        let track = extract(&buf, PitchSettings::default());
         assert!(track.frames.is_empty());
     }
 }

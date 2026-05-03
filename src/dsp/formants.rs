@@ -25,7 +25,23 @@ impl FormantTrack {
     }
 }
 
-pub fn extract(buf: &AudioBuffer) -> FormantTrack {
+/// User-tweakable knobs for formant tracking. Window/hop/order stay internal
+/// — the user mostly cares about how high to look (Praat's "max formant" knob).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FormantSettings {
+    /// Upper bound on candidate formant frequency, in Hz. Roots above this
+    /// (and the bandwidth cap) are dropped before sorting.
+    pub max_formant_hz: f32,
+}
+
+impl Default for FormantSettings {
+    fn default() -> Self {
+        // 5500 Hz is Praat's default for adult speech.
+        Self { max_formant_hz: 5500.0 }
+    }
+}
+
+pub fn extract(buf: &AudioBuffer, settings: FormantSettings) -> FormantTrack {
     let mono      = buf.mono();
     let sr        = buf.sample_rate;
     let window    = 512usize;
