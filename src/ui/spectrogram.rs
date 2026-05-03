@@ -61,4 +61,28 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
             }
         }
     }
+
+    // Formant overlay — F1/F2/F3 in red/green/blue, plotted on the spectrogram's
+    // own y-scale (0 .. Nyquist) so they align with formant bands visually.
+    if app.show_formants {
+        if let Some(formants) = &app.formants {
+            let dur     = app.view_end - app.view_start;
+            let nyquist = spec.sample_rate as f32 / 2.0;
+            let colors = [
+                egui::Color32::from_rgb(255, 80, 80),   // F1
+                egui::Color32::from_rgb(80, 255, 120),  // F2
+                egui::Color32::from_rgb(120, 160, 255), // F3
+            ];
+            for (i, frame) in formants.frames.iter().enumerate() {
+                let t = formants.frame_to_sec(i);
+                if t < app.view_start || t > app.view_end { continue; }
+                let x = rect.left() + ((t - app.view_start) / dur) as f32 * rect.width();
+                for (slot, hz) in [frame.f1, frame.f2, frame.f3].iter().enumerate() {
+                    let Some(hz) = hz else { continue };
+                    let y = rect.bottom() - (hz / nyquist) * rect.height();
+                    painter.circle_filled(egui::pos2(x, y), 1.6, colors[slot]);
+                }
+            }
+        }
+    }
 }
