@@ -8,7 +8,10 @@ use std::time::Instant;
 
 use crate::audio::{loader::AudioBuffer, player::AudioPlayer, recorder::Recorder};
 use crate::dsp::{
-    formants::FormantTrack, job::DspJob, pitch::PitchTrack, spectrogram::SpectrogramData,
+    formants::{FormantSettings, FormantTrack},
+    job::DspJob,
+    pitch::{PitchSettings, PitchTrack},
+    spectrogram::{SpectrogramData, SpectrogramSettings},
 };
 use crate::annotation::textgrid::TextGrid;
 
@@ -35,6 +38,12 @@ pub struct PraatlyApp {
     /// paint after a new spectrogram lands, freed (set to None) when the
     /// underlying data changes — so we never upload twice for the same frames.
     pub spectrogram_texture: Option<egui::TextureHandle>,
+
+    // DSP knobs the user can tweak via the settings panel.
+    pub spec_settings:    SpectrogramSettings,
+    pub pitch_settings:   PitchSettings,
+    pub formant_settings: FormantSettings,
+    pub show_settings:    bool,
 
     pub textgrid:    TextGrid,
     pub player:      AudioPlayer,
@@ -68,6 +77,10 @@ impl PraatlyApp {
             buffer: None, spectrogram: None, pitch: None, formants: None,
             spectrogram_job: None, pitch_job: None, formants_job: None,
             spectrogram_texture: None,
+            spec_settings: SpectrogramSettings::default(),
+            pitch_settings: PitchSettings::default(),
+            formant_settings: FormantSettings::default(),
+            show_settings: false,
             textgrid: TextGrid::default(),
             player: AudioPlayer::new(),
             view_start: 0.0, view_end: 5.0,
@@ -104,23 +117,45 @@ impl PraatlyApp {
                 // Drop the cached texture too — it's pixels for a file we're done with.
                 self.spectrogram_texture = None;
 
-                let buf_spec = Arc::clone(&buf);
-                self.spectrogram_job = Some(DspJob::spawn(ctx.clone(), move || {
-                    crate::dsp::spectrogram::compute(&buf_spec, 1024, 0.75)
-                }));
-                let buf_pitch = Arc::clone(&buf);
-                self.pitch_job = Some(DspJob::spawn(ctx.clone(), move || {
-                    crate::dsp::pitch::extract(&buf_pitch)
-                }));
-                let buf_formants = Arc::clone(&buf);
-                self.formants_job = Some(DspJob::spawn(ctx.clone(), move || {
-                    crate::dsp::formants::extract(&buf_formants)
-                }));
-
                 self.buffer = Some(buf);
+                self.respawn_spectrogram(ctx);
+                self.respawn_pitch(ctx);
+                self.respawn_formants(ctx);
             }
             Err(e) => log::error!("Failed to load {:?}: {}", path, e),
         }
+    }
+
+    /// Re-run the spectrogram pass with the current settings, on a worker thread.
+    /// No-op if no audio is loaded.
+    pub fn respawn_spectrogram(&mut self, ctx: &egui::Context) {
+        let Some(buf) = self.buffer.as_ref().map(Arc::clone) else { return; };
+        let s = self.spec_settings;
+        // Wipe the old result + texture immediately so the UI shows "loading"
+        // instead of mismatched-stale.
+        self.spectrogram = None;
+        self.spectrogram_texture = None;
+        self.spectrogram_job = Some(DspJob::spawn(ctx.clone(), move || {
+            crate::dsp::spectrogram::compute(&buf, s.window_size, s.overlap)
+        }));
+    }
+
+    pub fn respawn_pitch(&mut self, ctx: &egui::Context) {
+        let Some(buf) = self.buffer.as_ref().map(Arc::clone) else { return; };
+        let s = self.pitch_settings;
+        self.pitch = None;
+        self.pitch_job = Some(DspJob::spawn(ctx.clone(), move || {
+            crate::dsp::pitch::extract(&buf, s)
+        }));
+    }
+
+    pub fn respawn_formants(&mut self, ctx: &egui::Context) {
+        let Some(buf) = self.buffer.as_ref().map(Arc::clone) else { return; };
+        let s = self.formant_settings;
+        self.formants = None;
+        self.formants_job = Some(DspJob::spawn(ctx.clone(), move || {
+            crate::dsp::formants::extract(&buf, s)
+        }));
     }
 
     /// Drain any DSP jobs that have completed and swap their results into place.
@@ -203,6 +238,9 @@ impl eframe::App for PraatlyApp {
         // Help panel — renders as a floating window
         if self.show_help {
             crate::ui::help::show(ctx, self);
+        }
+        if self.show_settings {
+            crate::ui::settings::show(ctx, self);
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {

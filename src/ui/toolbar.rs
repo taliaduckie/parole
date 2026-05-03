@@ -167,6 +167,12 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
 
             ui.separator();
 
+            // ── Settings ──────────────────────────────────────────────────
+            let settings_lbl = if app.show_settings { "✕ Settings" } else { "⚙ Settings" };
+            if ui.button(settings_lbl).clicked() {
+                app.show_settings = !app.show_settings;
+            }
+
             // ── Help ──────────────────────────────────────────────────────
             let help_lbl = if app.show_help { "✕ Help" } else { "? Help" };
             if ui.button(help_lbl).clicked() {

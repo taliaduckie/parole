@@ -253,7 +253,7 @@ mod tests {
             Complex::from_polar(0.95, theta(2500.0)),
             Complex::from_polar(0.95, theta(3500.0)),
         ];
-        let f = roots_to_formants(&roots, sr);
+        let f = roots_to_formants(&roots, sr, 5500.0);
         assert!(approx(f.f1.unwrap(), 500.0, 5.0));
         assert!(approx(f.f2.unwrap(), 1500.0, 5.0));
         assert!(approx(f.f3.unwrap(), 2500.0, 5.0));
@@ -265,7 +265,7 @@ mod tests {
         let sr = 8000u32;
         let theta = 2.0 * std::f32::consts::PI * 1000.0 / sr as f32;
         let roots = vec![Complex::from_polar(0.5, theta)];
-        let f = roots_to_formants(&roots, sr);
+        let f = roots_to_formants(&roots, sr, 5500.0);
         assert_eq!(f, FormantFrame::default());
     }
 
@@ -274,7 +274,7 @@ mod tests {
         let sr = 8000u32;
         let theta = 2.0 * std::f32::consts::PI * 50.0 / sr as f32;
         let roots = vec![Complex::from_polar(0.95, theta)];
-        let f = roots_to_formants(&roots, sr);
+        let f = roots_to_formants(&roots, sr, 5500.0);
         assert!(f.f1.is_none());
     }
 
@@ -287,7 +287,7 @@ mod tests {
             Complex::from_polar(0.95, theta),
             Complex::from_polar(0.95, -theta),
         ];
-        let f = roots_to_formants(&roots, sr);
+        let f = roots_to_formants(&roots, sr, 5500.0);
         assert!(f.f1.is_some());
         assert!(f.f2.is_none());
     }
@@ -337,7 +337,7 @@ mod tests {
             y[i] = a1 * prev1 - a2 * prev2 + x;
         }
         let buf = AudioBuffer { samples: y, sample_rate: sr, channels: 1 };
-        let track = extract(&buf);
+        let track = extract(&buf, FormantSettings::default());
         // Look at the middle of the track to skip startup transients.
         let mid = track.frames.len() / 2;
         let f1 = track.frames[mid].f1.expect("expected an F1 in the middle of the track");
