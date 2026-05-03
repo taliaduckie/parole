@@ -48,20 +48,17 @@ pub fn write_mp3_mono(path: &Path, samples: &[f32], sample_rate: u32) -> Result<
         .map(|&s| (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
         .collect();
 
-    let mut mp3_data = Vec::new();
+    // The encoder writes into the Vec's spare capacity — it does NOT grow it.
+    // Reserve enough for both the encode and the final flush (which needs ≥7200 B).
+    let mut mp3_bytes: Vec<u8> =
+        Vec::with_capacity(mp3lame_encoder::max_required_buffer_size(pcm.len()));
     encoder
-        .encode(MonoPcm(&pcm), &mut mp3_data)
+        .encode_to_vec(MonoPcm(&pcm), &mut mp3_bytes)
         .map_err(|e| anyhow!("MP3 encode failed: {:?}", e))?;
+    mp3_bytes.reserve(7200);
     encoder
-        .flush::<FlushNoGap>(&mut mp3_data)
+        .flush_to_vec::<FlushNoGap>(&mut mp3_bytes)
         .map_err(|e| anyhow!("MP3 flush failed: {:?}", e))?;
-
-    // mp3lame-encoder returns Vec<MaybeUninit<u8>> instead of Vec<u8>.
-    // SAFETY: every byte was written by the encoder during encode/flush.
-    let mp3_bytes: Vec<u8> = mp3_data
-        .into_iter()
-        .map(|b| unsafe { b.assume_init() })
-        .collect();
 
     std::fs::write(path, &mp3_bytes)
         .with_context(|| format!("Could not write MP3 to {:?}", path))?;
