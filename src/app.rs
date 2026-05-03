@@ -31,6 +31,11 @@ pub struct PraatlyApp {
     pub pitch_job:       Option<DspJob<PitchTrack>>,
     pub formants_job:    Option<DspJob<FormantTrack>>,
 
+    /// Cached GPU texture for the spectrogram render. Built lazily on first
+    /// paint after a new spectrogram lands, freed (set to None) when the
+    /// underlying data changes — so we never upload twice for the same frames.
+    pub spectrogram_texture: Option<egui::TextureHandle>,
+
     pub textgrid:    TextGrid,
     pub player:      AudioPlayer,
     pub view_start:  f64,
@@ -62,6 +67,7 @@ impl PraatlyApp {
         let mut app = Self {
             buffer: None, spectrogram: None, pitch: None, formants: None,
             spectrogram_job: None, pitch_job: None, formants_job: None,
+            spectrogram_texture: None,
             textgrid: TextGrid::default(),
             player: AudioPlayer::new(),
             view_start: 0.0, view_end: 5.0,
@@ -95,6 +101,8 @@ impl PraatlyApp {
                 self.spectrogram = None;
                 self.pitch = None;
                 self.formants = None;
+                // Drop the cached texture too — it's pixels for a file we're done with.
+                self.spectrogram_texture = None;
 
                 let buf_spec = Arc::clone(&buf);
                 self.spectrogram_job = Some(DspJob::spawn(ctx.clone(), move || {
@@ -122,6 +130,9 @@ impl PraatlyApp {
             if let Some(result) = job.poll() {
                 self.spectrogram = Some(result);
                 self.spectrogram_job = None;
+                // Force a texture rebuild on next paint — old pixels are
+                // for a stale spectrogram (or there were no pixels to begin with).
+                self.spectrogram_texture = None;
             }
         }
         if let Some(job) = &self.pitch_job {

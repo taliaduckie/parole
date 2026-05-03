@@ -1,5 +1,6 @@
 use eframe::egui;
 use crate::app::PraatlyApp;
+use crate::dsp::spectrogram::SpectrogramData;
 
 // viridis colormap approximated by polynomial regression.
 // I did not derive these coefficients. I adapted them from the internet.
@@ -12,6 +13,33 @@ fn viridis(t: f32) -> egui::Color32 {
     egui::Color32::from_rgb((r*255.0) as u8, (g*255.0) as u8, (b*255.0) as u8)
 }
 
+/// Bake the spectrogram into a single ColorImage we can hand to the GPU.
+/// log10 scale + global-max normalisation + viridis, applied once per
+/// spectrogram (instead of once per frame *per paint* — the old hot path
+/// painted ~n_frames × n_bins rects every redraw, which scaled extremely badly).
+pub(crate) fn build_image(spec: &SpectrogramData) -> egui::ColorImage {
+    let n_frames = spec.n_frames();
+    let n_bins   = spec.n_bins();
+    // .max(1e-12) so all-silence input doesn't divide by zero — the resulting
+    // norm values clamp to 0.0 and we paint a uniform dark blue, as nature intended.
+    let global_max = spec.magnitudes.iter().flatten().cloned()
+        .fold(0.0_f32, f32::max).max(1e-12);
+
+    // ColorImage is row-major with row 0 at the top. The spectrogram thinks
+    // bottom-up (bin 0 = DC at the bottom), so we flip rows on the way in.
+    let mut pixels = vec![egui::Color32::BLACK; n_frames.saturating_mul(n_bins)];
+    for (fi, frame) in spec.magnitudes.iter().enumerate() {
+        for (bi, &mag) in frame.iter().enumerate() {
+            // log10 to bring out the quiet detail — the 9.0 is not arbitrary just indefensible lol
+            let norm = (1.0 + mag / global_max * 9.0).log10();
+            let row = n_bins - 1 - bi;
+            pixels[row * n_frames + fi] = viridis(norm);
+        }
+    }
+
+    egui::ColorImage { size: [n_frames, n_bins], pixels }
+}
+
 pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     let (rect, _) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), height), egui::Sense::hover());
@@ -20,30 +48,30 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
 
     let Some(spec) = &app.spectrogram else { return; };
     let n_frames = spec.n_frames();
-    let n_bins   = spec.n_bins();
     if n_frames == 0 { return; }
 
-    // global max so we can normalise per-cell magnitude — avoids the whole thing
-    // going dark because one frame is extremely loud. been there.
-    let global_max = spec.magnitudes.iter().flatten().cloned().fold(0.0f32, f32::max);
-    if global_max == 0.0 { return; }
+    // Build the texture lazily on the first paint after a new spectrogram lands.
+    // Subsequent frames are a single quad blit — finally something my GPU
+    // doesn't need to be brave about.
+    if app.spectrogram_texture.is_none() {
+        let image = build_image(spec);
+        let handle = ui.ctx().load_texture(
+            "parole-spectrogram",
+            image,
+            egui::TextureOptions::LINEAR,
+        );
+        app.spectrogram_texture = Some(handle);
+    }
 
-    let cw = rect.width()  / n_frames as f32;
-    let ch = rect.height() / n_bins   as f32;
-
-    for (fi, frame) in spec.magnitudes.iter().enumerate() {
-        let x = rect.left() + fi as f32 * cw;
-        for (bi, &mag) in frame.iter().enumerate() {
-            let y    = rect.bottom() - (bi + 1) as f32 * ch;
-            // log10 scale to bring out the quiet detail — the 9.0 is not arbitrary just indefensible lol
-            let norm = (1.0 + mag / global_max * 9.0).log10();
-            painter.rect_filled(
-                // +0.5 on cell size plugs sub-pixel gaps between adjacent cells.
-                // tiny hack, surprisingly big difference. teehee.
-                egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(cw + 0.5, ch + 0.5)),
-                0.0, viridis(norm),
-            );
-        }
+    if let Some(tex) = &app.spectrogram_texture {
+        // Full UV — paint the whole texture into the panel rect. (Zoom-aware
+        // rendering would just narrow the U range here. saving that for later.)
+        painter.image(
+            tex.id(),
+            rect,
+            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+            egui::Color32::WHITE,
+        );
     }
 
     // Pitch overlay — yellow dots over the spectrogram, one per voiced frame
