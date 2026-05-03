@@ -10,7 +10,7 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Audio", &["wav", "flac", "mp3", "aiff"])
                     .pick_file()
-                { app.load_file(path); }
+                { app.load_file(path, ctx); }
             }
 
             ui.separator();

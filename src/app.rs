@@ -3,10 +3,13 @@
 
 use eframe::egui;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::audio::{loader::AudioBuffer, player::AudioPlayer, recorder::Recorder};
-use crate::dsp::{spectrogram::SpectrogramData, pitch::PitchTrack, formants::FormantTrack};
+use crate::dsp::{
+    formants::FormantTrack, job::DspJob, pitch::PitchTrack, spectrogram::SpectrogramData,
+};
 use crate::annotation::textgrid::TextGrid;
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -17,10 +20,17 @@ pub enum SaveFormat {
 }
 
 pub struct PraatlyApp {
-    pub buffer:      Option<AudioBuffer>,
+    pub buffer:      Option<Arc<AudioBuffer>>,
     pub spectrogram: Option<SpectrogramData>,
     pub pitch:       Option<PitchTrack>,
     pub formants:    Option<FormantTrack>,
+
+    // Background DSP jobs — populated when load_file fires, drained as each
+    // worker reports back. None means "no work pending for this lane".
+    pub spectrogram_job: Option<DspJob<SpectrogramData>>,
+    pub pitch_job:       Option<DspJob<PitchTrack>>,
+    pub formants_job:    Option<DspJob<FormantTrack>>,
+
     pub textgrid:    TextGrid,
     pub player:      AudioPlayer,
     pub view_start:  f64,
@@ -51,6 +61,7 @@ impl PraatlyApp {
 
         let mut app = Self {
             buffer: None, spectrogram: None, pitch: None, formants: None,
+            spectrogram_job: None, pitch_job: None, formants_job: None,
             textgrid: TextGrid::default(),
             player: AudioPlayer::new(),
             view_start: 0.0, view_end: 5.0,
@@ -66,22 +77,64 @@ impl PraatlyApp {
             save_status: None,
         };
 
-        if let Some(p) = path { app.load_file(p); }
+        if let Some(p) = path {
+            app.load_file(p, &cc.egui_ctx);
+        }
         app
     }
 
-    pub fn load_file(&mut self, path: PathBuf) {
+    pub fn load_file(&mut self, path: PathBuf, ctx: &egui::Context) {
         match crate::audio::loader::load_audio(&path) {
             Ok(buf) => {
-                self.view_end    = buf.duration_secs();
-                // compute everything up front — a little eager but avoids lazy-loading complexity
-                // that I'm not ready to take on today. woot.
-                self.spectrogram = Some(crate::dsp::spectrogram::compute(&buf, 1024, 0.75));
-                self.pitch       = Some(crate::dsp::pitch::extract(&buf));
-                self.formants    = Some(crate::dsp::formants::extract(&buf));
-                self.buffer      = Some(buf);
+                self.view_end = buf.duration_secs();
+                let buf = Arc::new(buf);
+
+                // Wipe any stale results — old data is for the wrong file now,
+                // and any in-flight jobs from a previous load are quietly orphaned
+                // (their senders will fail silently when they finally finish).
+                self.spectrogram = None;
+                self.pitch = None;
+                self.formants = None;
+
+                let buf_spec = Arc::clone(&buf);
+                self.spectrogram_job = Some(DspJob::spawn(ctx.clone(), move || {
+                    crate::dsp::spectrogram::compute(&buf_spec, 1024, 0.75)
+                }));
+                let buf_pitch = Arc::clone(&buf);
+                self.pitch_job = Some(DspJob::spawn(ctx.clone(), move || {
+                    crate::dsp::pitch::extract(&buf_pitch)
+                }));
+                let buf_formants = Arc::clone(&buf);
+                self.formants_job = Some(DspJob::spawn(ctx.clone(), move || {
+                    crate::dsp::formants::extract(&buf_formants)
+                }));
+
+                self.buffer = Some(buf);
             }
             Err(e) => log::error!("Failed to load {:?}: {}", path, e),
+        }
+    }
+
+    /// Drain any DSP jobs that have completed and swap their results into place.
+    /// Cheap to call every frame — try_recv is non-blocking.
+    fn poll_dsp_jobs(&mut self) {
+        if let Some(job) = &self.spectrogram_job {
+            if let Some(result) = job.poll() {
+                self.spectrogram = Some(result);
+                self.spectrogram_job = None;
+            }
+        }
+        if let Some(job) = &self.pitch_job {
+            if let Some(result) = job.poll() {
+                self.pitch = Some(result);
+                self.pitch_job = None;
+            }
+        }
+        if let Some(job) = &self.formants_job {
+            if let Some(result) = job.poll() {
+                self.formants = Some(result);
+                self.formants_job = None;
+            }
         }
     }
 
@@ -126,6 +179,9 @@ impl PraatlyApp {
 
 impl eframe::App for PraatlyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Pick up any DSP results that finished between frames. Cheap; try_recv is non-blocking.
+        self.poll_dsp_jobs();
+
         // Keyboard shortcut: ? toggles help
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
             self.show_help = !self.show_help;
