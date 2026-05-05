@@ -22,49 +22,144 @@ pub enum SaveFormat {
     Mp3,
 }
 
-pub struct PraatlyApp {
-    pub buffer:      Option<Arc<AudioBuffer>>,
-    pub spectrogram: Option<SpectrogramData>,
-    pub pitch:       Option<PitchTrack>,
-    pub formants:    Option<FormantTrack>,
+/// Severity flavour for status-bar messages. Drives the colour the toolbar
+/// renders the text in — you should be able to tell at a glance whether the
+/// thing that just happened was good news.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusKind {
+    Info,
+    Success,
+    Error,
+}
 
-    // Background DSP jobs — populated when load_file fires, drained as each
-    // worker reports back. None means "no work pending for this lane".
-    pub spectrogram_job: Option<DspJob<SpectrogramData>>,
-    pub pitch_job:       Option<DspJob<PitchTrack>>,
-    pub formants_job:    Option<DspJob<FormantTrack>>,
+#[derive(Debug, Clone)]
+pub struct StatusMessage {
+    pub text: String,
+    pub kind: StatusKind,
+}
 
-    /// Cached GPU texture for the spectrogram render. Built lazily on first
-    /// paint after a new spectrogram lands, freed (set to None) when the
-    /// underlying data changes — so we never upload twice for the same frames.
+impl StatusMessage {
+    pub fn info(text: impl Into<String>) -> Self {
+        Self { text: text.into(), kind: StatusKind::Info }
+    }
+    pub fn success(text: impl Into<String>) -> Self {
+        Self { text: text.into(), kind: StatusKind::Success }
+    }
+    pub fn error(text: impl Into<String>) -> Self {
+        Self { text: text.into(), kind: StatusKind::Error }
+    }
+}
+
+/// Everything the recorder needs to remember between frames.
+pub struct RecordingState {
+    pub recorder:     Recorder,
+    pub started_at:   Option<Instant>,
+    pub samples:      Vec<f32>,
+    pub sample_rate:  u32,
+    pub save_format:  SaveFormat,
+}
+
+impl RecordingState {
+    pub fn new() -> Self {
+        Self {
+            recorder: Recorder::new(),
+            started_at: None,
+            samples: Vec::new(),
+            sample_rate: 44100,
+            save_format: SaveFormat::Wav,
+        }
+    }
+}
+
+impl Default for RecordingState {
+    fn default() -> Self { Self::new() }
+}
+
+/// Computed DSP outputs, plus the GPU-side cache for the spectrogram.
+/// All `Option`s — None means "not computed yet (or just invalidated)".
+#[derive(Default)]
+pub struct DspResults {
+    pub spectrogram:         Option<SpectrogramData>,
+    pub pitch:               Option<PitchTrack>,
+    pub formants:            Option<FormantTrack>,
     pub spectrogram_texture: Option<egui::TextureHandle>,
+}
 
-    // DSP knobs the user can tweak via the settings panel.
-    pub spec_settings:    SpectrogramSettings,
-    pub pitch_settings:   PitchSettings,
-    pub formant_settings: FormantSettings,
-    pub show_settings:    bool,
+/// In-flight worker handles. Each becomes None once its result lands in DspResults.
+#[derive(Default)]
+pub struct DspJobs {
+    pub spectrogram: Option<DspJob<SpectrogramData>>,
+    pub pitch:       Option<DspJob<PitchTrack>>,
+    pub formants:    Option<DspJob<FormantTrack>>,
+}
 
-    pub textgrid:    TextGrid,
-    pub player:      AudioPlayer,
-    pub view_start:  f64,
-    pub view_end:    f64,
-    pub selection:   Option<(f64, f64)>,
+/// User-tweakable knobs that drive the DSP passes. Settings panel writes here.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DspParams {
+    pub spectrogram: SpectrogramSettings,
+    pub pitch:       PitchSettings,
+    pub formants:    FormantSettings,
+}
+
+/// What's visible right now: time window, selection, and which overlays/panels
+/// the user has on. Pretty much anything that affects "what the user sees" but
+/// not "what's been computed" lives here.
+pub struct ViewState {
+    pub start:            f64,
+    pub end:              f64,
+    pub selection:        Option<(f64, f64)>,
     pub show_spectrogram: bool,
     pub show_pitch:       bool,
     pub show_formants:    bool,
     pub show_textgrid:    bool,
+}
 
-    // Help panel toggle
-    pub show_help: bool,
+impl Default for ViewState {
+    fn default() -> Self {
+        Self {
+            start: 0.0,
+            end: 5.0,
+            selection: None,
+            show_spectrogram: true,
+            show_pitch:       true,
+            show_formants:    true,
+            show_textgrid:    true,
+        }
+    }
+}
 
-    // Recording state
-    pub recorder:           Recorder,
-    pub record_start:       Option<Instant>,
-    pub recorded_samples:   Vec<f32>,
-    pub record_sample_rate: u32,
-    pub save_format:        SaveFormat,
-    pub save_status:        Option<String>, // feedback message after save attempt
+/// Floaty UI bits that aren't really part of the analysis state — modal toggles,
+/// status bar. The kind of state that's allowed to be ephemeral.
+#[derive(Default)]
+pub struct UiState {
+    pub show_help:     bool,
+    pub show_settings: bool,
+    pub status:        Option<StatusMessage>,
+}
+
+impl UiState {
+    pub fn info(&mut self, text: impl Into<String>) {
+        self.status = Some(StatusMessage::info(text));
+    }
+    pub fn success(&mut self, text: impl Into<String>) {
+        self.status = Some(StatusMessage::success(text));
+    }
+    pub fn error(&mut self, text: impl Into<String>) {
+        self.status = Some(StatusMessage::error(text));
+    }
+}
+
+pub struct PraatlyApp {
+    pub buffer:    Option<Arc<AudioBuffer>>,
+    pub textgrid:  TextGrid,
+    pub player:    AudioPlayer,
+
+    pub recording: RecordingState,
+    pub dsp:       DspResults,
+    pub jobs:      DspJobs,
+    pub params:    DspParams,
+    pub view:      ViewState,
+    pub ui:        UiState,
 }
 
 impl PraatlyApp {
@@ -74,26 +169,15 @@ impl PraatlyApp {
         cc.egui_ctx.set_visuals(visuals);
 
         let mut app = Self {
-            buffer: None, spectrogram: None, pitch: None, formants: None,
-            spectrogram_job: None, pitch_job: None, formants_job: None,
-            spectrogram_texture: None,
-            spec_settings: SpectrogramSettings::default(),
-            pitch_settings: PitchSettings::default(),
-            formant_settings: FormantSettings::default(),
-            show_settings: false,
-            textgrid: TextGrid::default(),
-            player: AudioPlayer::new(),
-            view_start: 0.0, view_end: 5.0,
-            selection: None,
-            show_spectrogram: true, show_pitch: true,
-            show_formants: true,   show_textgrid: true,
-            show_help: false,
-            recorder: Recorder::new(),
-            record_start: None,
-            recorded_samples: Vec::new(),
-            record_sample_rate: 44100,
-            save_format: SaveFormat::Wav,
-            save_status: None,
+            buffer:    None,
+            textgrid:  TextGrid::default(),
+            player:    AudioPlayer::new(),
+            recording: RecordingState::new(),
+            dsp:       DspResults::default(),
+            jobs:      DspJobs::default(),
+            params:    DspParams::default(),
+            view:      ViewState::default(),
+            ui:        UiState::default(),
         };
 
         if let Some(p) = path {
@@ -105,24 +189,23 @@ impl PraatlyApp {
     pub fn load_file(&mut self, path: PathBuf, ctx: &egui::Context) {
         match crate::audio::loader::load_audio(&path) {
             Ok(buf) => {
-                self.view_end = buf.duration_secs();
+                self.view.end = buf.duration_secs();
                 let buf = Arc::new(buf);
 
                 // Wipe any stale results — old data is for the wrong file now,
                 // and any in-flight jobs from a previous load are quietly orphaned
                 // (their senders will fail silently when they finally finish).
-                self.spectrogram = None;
-                self.pitch = None;
-                self.formants = None;
-                // Drop the cached texture too — it's pixels for a file we're done with.
-                self.spectrogram_texture = None;
+                self.dsp = DspResults::default();
 
                 self.buffer = Some(buf);
                 self.respawn_spectrogram(ctx);
                 self.respawn_pitch(ctx);
                 self.respawn_formants(ctx);
             }
-            Err(e) => log::error!("Failed to load {:?}: {}", path, e),
+            Err(e) => {
+                log::error!("Failed to load {:?}: {}", path, e);
+                self.ui.error(format!("Couldn't load file: {}", e));
+            }
         }
     }
 
@@ -130,30 +213,30 @@ impl PraatlyApp {
     /// No-op if no audio is loaded.
     pub fn respawn_spectrogram(&mut self, ctx: &egui::Context) {
         let Some(buf) = self.buffer.as_ref().map(Arc::clone) else { return; };
-        let s = self.spec_settings;
+        let s = self.params.spectrogram;
         // Wipe the old result + texture immediately so the UI shows "loading"
         // instead of mismatched-stale.
-        self.spectrogram = None;
-        self.spectrogram_texture = None;
-        self.spectrogram_job = Some(DspJob::spawn(ctx.clone(), move || {
+        self.dsp.spectrogram = None;
+        self.dsp.spectrogram_texture = None;
+        self.jobs.spectrogram = Some(DspJob::spawn(ctx.clone(), move || {
             crate::dsp::spectrogram::compute(&buf, s.window_size, s.overlap)
         }));
     }
 
     pub fn respawn_pitch(&mut self, ctx: &egui::Context) {
         let Some(buf) = self.buffer.as_ref().map(Arc::clone) else { return; };
-        let s = self.pitch_settings;
-        self.pitch = None;
-        self.pitch_job = Some(DspJob::spawn(ctx.clone(), move || {
+        let s = self.params.pitch;
+        self.dsp.pitch = None;
+        self.jobs.pitch = Some(DspJob::spawn(ctx.clone(), move || {
             crate::dsp::pitch::extract(&buf, s)
         }));
     }
 
     pub fn respawn_formants(&mut self, ctx: &egui::Context) {
         let Some(buf) = self.buffer.as_ref().map(Arc::clone) else { return; };
-        let s = self.formant_settings;
-        self.formants = None;
-        self.formants_job = Some(DspJob::spawn(ctx.clone(), move || {
+        let s = self.params.formants;
+        self.dsp.formants = None;
+        self.jobs.formants = Some(DspJob::spawn(ctx.clone(), move || {
             crate::dsp::formants::extract(&buf, s)
         }));
     }
@@ -161,65 +244,65 @@ impl PraatlyApp {
     /// Drain any DSP jobs that have completed and swap their results into place.
     /// Cheap to call every frame — try_recv is non-blocking.
     fn poll_dsp_jobs(&mut self) {
-        if let Some(job) = &self.spectrogram_job {
+        if let Some(job) = &self.jobs.spectrogram {
             if let Some(result) = job.poll() {
-                self.spectrogram = Some(result);
-                self.spectrogram_job = None;
+                self.dsp.spectrogram = Some(result);
+                self.jobs.spectrogram = None;
                 // Force a texture rebuild on next paint — old pixels are
                 // for a stale spectrogram (or there were no pixels to begin with).
-                self.spectrogram_texture = None;
+                self.dsp.spectrogram_texture = None;
             }
         }
-        if let Some(job) = &self.pitch_job {
+        if let Some(job) = &self.jobs.pitch {
             if let Some(result) = job.poll() {
-                self.pitch = Some(result);
-                self.pitch_job = None;
+                self.dsp.pitch = Some(result);
+                self.jobs.pitch = None;
             }
         }
-        if let Some(job) = &self.formants_job {
+        if let Some(job) = &self.jobs.formants {
             if let Some(result) = job.poll() {
-                self.formants = Some(result);
-                self.formants_job = None;
+                self.dsp.formants = Some(result);
+                self.jobs.formants = None;
             }
         }
     }
 
     /// Save recorded samples to a WAV file at the given path.
     pub fn save_recording_wav(&mut self, path: PathBuf) {
-        if self.recorded_samples.is_empty() {
-            self.save_status = Some("Nothing recorded yet.".to_string());
+        if self.recording.samples.is_empty() {
+            self.ui.info("Nothing recorded yet.");
             return;
         }
-        self.save_status = Some(match crate::audio::encoder::write_wav_mono_f32(
+        match crate::audio::encoder::write_wav_mono_f32(
             &path,
-            &self.recorded_samples,
-            self.record_sample_rate,
+            &self.recording.samples,
+            self.recording.sample_rate,
         ) {
-            Ok(()) => format!(
+            Ok(()) => self.ui.success(format!(
                 "Saved to {}",
                 path.file_name().unwrap_or_default().to_string_lossy()
-            ),
-            Err(e) => format!("WAV save failed: {}", e),
-        });
+            )),
+            Err(e) => self.ui.error(format!("WAV save failed: {}", e)),
+        }
     }
 
     /// Save recorded samples to an MP3 file at the given path.
     pub fn save_recording_mp3(&mut self, path: PathBuf) {
-        if self.recorded_samples.is_empty() {
-            self.save_status = Some("Nothing recorded yet.".to_string());
+        if self.recording.samples.is_empty() {
+            self.ui.info("Nothing recorded yet.");
             return;
         }
-        self.save_status = Some(match crate::audio::encoder::write_mp3_mono(
+        match crate::audio::encoder::write_mp3_mono(
             &path,
-            &self.recorded_samples,
-            self.record_sample_rate,
+            &self.recording.samples,
+            self.recording.sample_rate,
         ) {
-            Ok(()) => format!(
+            Ok(()) => self.ui.success(format!(
                 "Saved to {}",
                 path.file_name().unwrap_or_default().to_string_lossy()
-            ),
-            Err(e) => format!("MP3 save failed: {}", e),
-        });
+            )),
+            Err(e) => self.ui.error(format!("MP3 save failed: {}", e)),
+        }
     }
 }
 
@@ -228,28 +311,28 @@ impl eframe::App for PraatlyApp {
         // Pick up any DSP results that finished between frames. Cheap; try_recv is non-blocking.
         self.poll_dsp_jobs();
 
-        // Keyboard shortcut: ? toggles help
+        // Keyboard shortcut: F1 toggles help
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
-            self.show_help = !self.show_help;
+            self.ui.show_help = !self.ui.show_help;
         }
 
         crate::ui::toolbar::show(ctx, self);
 
         // Help panel — renders as a floating window
-        if self.show_help {
+        if self.ui.show_help {
             crate::ui::help::show(ctx, self);
         }
-        if self.show_settings {
+        if self.ui.show_settings {
             crate::ui::settings::show(ctx, self);
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let h = ui.available_height();
             crate::ui::waveform::show(ui, self, h * 0.25);
-            if self.show_spectrogram {
+            if self.view.show_spectrogram {
                 crate::ui::spectrogram::show(ui, self, h * 0.45);
             }
-            if self.show_textgrid {
+            if self.view.show_textgrid {
                 crate::annotation::textgrid::show(ui, self, h * 0.30);
             }
         });
