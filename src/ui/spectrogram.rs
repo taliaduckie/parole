@@ -40,6 +40,19 @@ pub(crate) fn build_image(spec: &SpectrogramData) -> egui::ColorImage {
     egui::ColorImage { size: [n_frames, n_bins], pixels }
 }
 
+/// Map the visible time window [view_start, view_end] to the (u0, u1) range
+/// of the spectrogram texture. Returns None when the window doesn't overlap
+/// any actual spectrogram data (start past the end, or zero-width view).
+pub(crate) fn view_uv(view_start: f64, view_end: f64, total_spec_dur: f64) -> Option<(f32, f32)> {
+    if total_spec_dur <= 0.0 || view_end <= view_start {
+        return None;
+    }
+    let u0 = (view_start / total_spec_dur).clamp(0.0, 1.0) as f32;
+    let u1 = (view_end   / total_spec_dur).clamp(0.0, 1.0) as f32;
+    if u1 <= u0 { return None; } // entirely past the data, or numerical pinch
+    Some((u0, u1))
+}
+
 pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     let (rect, _) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), height), egui::Sense::hover());
@@ -64,14 +77,18 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     }
 
     if let Some(tex) = &app.spectrogram_texture {
-        // Full UV — paint the whole texture into the panel rect. (Zoom-aware
-        // rendering would just narrow the U range here. saving that for later.)
-        painter.image(
-            tex.id(),
-            rect,
-            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-            egui::Color32::WHITE,
-        );
+        // Total time covered by the (computed) spectrogram. Always ≤ buffer
+        // duration because the last partial window gets dropped during compute.
+        let total_spec_dur =
+            spec.n_frames() as f64 * spec.hop_size as f64 / spec.sample_rate as f64;
+        if let Some((u0, u1)) = view_uv(app.view_start, app.view_end, total_spec_dur) {
+            painter.image(
+                tex.id(),
+                rect,
+                egui::Rect::from_min_max(egui::pos2(u0, 0.0), egui::pos2(u1, 1.0)),
+                egui::Color32::WHITE,
+            );
+        }
     }
 
     // Pitch overlay — yellow dots over the spectrogram, one per voiced frame
@@ -174,6 +191,52 @@ mod tests {
         let dark = viridis(0.0);
         let bright = viridis(1.0);
         assert_ne!(dark, bright);
+    }
+
+    #[test]
+    fn view_uv_full_window_is_full_uv() {
+        let uv = view_uv(0.0, 5.0, 5.0).unwrap();
+        assert!((uv.0 - 0.0).abs() < 1e-6);
+        assert!((uv.1 - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn view_uv_half_window_is_first_half_of_uv() {
+        let uv = view_uv(0.0, 2.5, 5.0).unwrap();
+        assert!((uv.0 - 0.0).abs() < 1e-6);
+        assert!((uv.1 - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn view_uv_offset_window_maps_to_offset_uv() {
+        // 1s..3s of a 4s spec → u in [0.25, 0.75]
+        let uv = view_uv(1.0, 3.0, 4.0).unwrap();
+        assert!((uv.0 - 0.25).abs() < 1e-6);
+        assert!((uv.1 - 0.75).abs() < 1e-6);
+    }
+
+    #[test]
+    fn view_uv_clamps_window_past_end_of_spectrogram() {
+        // view_end exceeds total duration (last partial window dropped during compute);
+        // u1 should clamp at 1.0 instead of overshooting.
+        let uv = view_uv(0.0, 5.5, 5.0).unwrap();
+        assert!((uv.1 - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn view_uv_returns_none_for_zero_width_window() {
+        assert!(view_uv(2.0, 2.0, 5.0).is_none());
+    }
+
+    #[test]
+    fn view_uv_returns_none_when_window_starts_past_data() {
+        // view_start > total duration → entirely off the right edge.
+        assert!(view_uv(10.0, 12.0, 5.0).is_none());
+    }
+
+    #[test]
+    fn view_uv_returns_none_for_empty_spectrogram() {
+        assert!(view_uv(0.0, 5.0, 0.0).is_none());
     }
 
     #[test]
