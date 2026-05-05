@@ -18,7 +18,7 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
                 ui.heading("Parole");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("✕ Close").clicked() {
-                        app.show_help = false;
+                        app.ui.show_help = false;
                     }
                 });
             });

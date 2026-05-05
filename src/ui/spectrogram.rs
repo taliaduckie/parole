@@ -59,29 +59,29 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(10, 10, 16));
 
-    let Some(spec) = &app.spectrogram else { return; };
+    let Some(spec) = &app.dsp.spectrogram else { return; };
     let n_frames = spec.n_frames();
     if n_frames == 0 { return; }
 
     // Build the texture lazily on the first paint after a new spectrogram lands.
     // Subsequent frames are a single quad blit — finally something my GPU
     // doesn't need to be brave about.
-    if app.spectrogram_texture.is_none() {
+    if app.dsp.spectrogram_texture.is_none() {
         let image = build_image(spec);
         let handle = ui.ctx().load_texture(
             "parole-spectrogram",
             image,
             egui::TextureOptions::LINEAR,
         );
-        app.spectrogram_texture = Some(handle);
+        app.dsp.spectrogram_texture = Some(handle);
     }
 
-    if let Some(tex) = &app.spectrogram_texture {
+    if let Some(tex) = &app.dsp.spectrogram_texture {
         // Total time covered by the (computed) spectrogram. Always ≤ buffer
         // duration because the last partial window gets dropped during compute.
         let total_spec_dur =
             spec.n_frames() as f64 * spec.hop_size as f64 / spec.sample_rate as f64;
-        if let Some((u0, u1)) = view_uv(app.view_start, app.view_end, total_spec_dur) {
+        if let Some((u0, u1)) = view_uv(app.view.start, app.view.end, total_spec_dur) {
             painter.image(
                 tex.id(),
                 rect,
@@ -92,15 +92,15 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     }
 
     // Pitch overlay — yellow dots over the spectrogram, one per voiced frame
-    if app.show_pitch {
-        if let Some(pitch) = &app.pitch {
-            let dur    = app.view_end - app.view_start;
+    if app.view.show_pitch {
+        if let Some(pitch) = &app.dsp.pitch {
+            let dur    = app.view.end - app.view.start;
             let max_hz = 600.0f32; // matches the extraction ceiling — they agreed on this without talking
             for (i, f0) in pitch.frames.iter().enumerate() {
                 let Some(hz) = f0 else { continue }; // unvoiced frame: skip silently, as nature intended
                 let t = pitch.frame_to_sec(i);
-                if t < app.view_start || t > app.view_end { continue; }
-                let x = rect.left() + ((t - app.view_start) / dur) as f32 * rect.width();
+                if t < app.view.start || t > app.view.end { continue; }
+                let x = rect.left() + ((t - app.view.start) / dur) as f32 * rect.width();
                 let y = rect.bottom() - (hz / max_hz) * rect.height();
                 painter.circle_filled(egui::pos2(x, y), 1.5, egui::Color32::YELLOW);
             }
@@ -109,9 +109,9 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
 
     // Formant overlay — F1/F2/F3 in red/green/blue, plotted on the spectrogram's
     // own y-scale (0 .. Nyquist) so they align with formant bands visually.
-    if app.show_formants {
-        if let Some(formants) = &app.formants {
-            let dur     = app.view_end - app.view_start;
+    if app.view.show_formants {
+        if let Some(formants) = &app.dsp.formants {
+            let dur     = app.view.end - app.view.start;
             let nyquist = spec.sample_rate as f32 / 2.0;
             let colors = [
                 egui::Color32::from_rgb(255, 80, 80),   // F1
@@ -120,8 +120,8 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
             ];
             for (i, frame) in formants.frames.iter().enumerate() {
                 let t = formants.frame_to_sec(i);
-                if t < app.view_start || t > app.view_end { continue; }
-                let x = rect.left() + ((t - app.view_start) / dur) as f32 * rect.width();
+                if t < app.view.start || t > app.view.end { continue; }
+                let x = rect.left() + ((t - app.view.start) / dur) as f32 * rect.width();
                 for (slot, hz) in [frame.f1, frame.f2, frame.f3].iter().enumerate() {
                     let Some(hz) = hz else { continue };
                     let y = rect.bottom() - (hz / nyquist) * rect.height();

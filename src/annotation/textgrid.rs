@@ -34,7 +34,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut crate::app::PraatlyApp, height: f32) {
         return;
     }
 
-    let dur    = app.view_end - app.view_start;
+    let dur    = app.view.end - app.view.start;
     let tier_h = height / app.textgrid.tiers.len() as f32;
 
     for (ti, tier) in app.textgrid.tiers.iter().enumerate() {
@@ -44,9 +44,9 @@ pub fn show(ui: &mut egui::Ui, app: &mut crate::app::PraatlyApp, height: f32) {
 
         if let Tier::Interval { intervals, .. } = tier {
             for iv in intervals {
-                if iv.end < app.view_start || iv.start > app.view_end { continue; }
-                let x0 = rect.left() + ((iv.start - app.view_start) / dur) as f32 * rect.width();
-                let x1 = rect.left() + ((iv.end   - app.view_start) / dur) as f32 * rect.width();
+                if iv.end < app.view.start || iv.start > app.view.end { continue; }
+                let x0 = rect.left() + ((iv.start - app.view.start) / dur) as f32 * rect.width();
+                let x1 = rect.left() + ((iv.end   - app.view.start) / dur) as f32 * rect.width();
                 let r  = egui::Rect::from_min_max(egui::pos2(x0, ty+18.0), egui::pos2(x1, ty+tier_h-2.0));
                 painter.rect_stroke(r, 2.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(70,70,110)));
                 painter.text(r.center(), egui::Align2::CENTER_CENTER,

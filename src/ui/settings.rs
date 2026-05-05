@@ -17,7 +17,7 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
                 ui.heading("Analysis settings");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("✕ Close").clicked() {
-                        app.show_settings = false;
+                        app.ui.show_settings = false;
                     }
                 });
             });
@@ -33,7 +33,7 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
 
 fn spectrogram_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut PraatlyApp) {
     section_heading(ui, "Spectrogram");
-    let mut s = app.spec_settings;
+    let mut s = app.params.spectrogram;
 
     ui.horizontal(|ui| {
         ui.label("Window size:");
@@ -47,7 +47,7 @@ fn spectrogram_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut Praatly
         ui.add(egui::Slider::new(&mut s.overlap, 0.0..=0.95).fixed_decimals(2));
     });
 
-    app.spec_settings = s;
+    app.params.spectrogram = s;
 
     if ui.button("Apply").clicked() {
         app.respawn_spectrogram(ctx);
@@ -56,7 +56,7 @@ fn spectrogram_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut Praatly
 
 fn pitch_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut PraatlyApp) {
     section_heading(ui, "Pitch (F0)");
-    let mut s = app.pitch_settings;
+    let mut s = app.params.pitch;
 
     ui.horizontal(|ui| {
         ui.label("Min Hz:");
@@ -76,7 +76,7 @@ fn pitch_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut PraatlyApp) {
     if s.min_hz >= s.max_hz {
         s.max_hz = (s.min_hz + 10.0).min(2000.0);
     }
-    app.pitch_settings = s;
+    app.params.pitch = s;
 
     if ui.button("Apply").clicked() {
         app.respawn_pitch(ctx);
@@ -85,14 +85,14 @@ fn pitch_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut PraatlyApp) {
 
 fn formant_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut PraatlyApp) {
     section_heading(ui, "Formants");
-    let mut s = app.formant_settings;
+    let mut s = app.params.formants;
 
     ui.horizontal(|ui| {
         ui.label("Max formant Hz:");
         ui.add(egui::Slider::new(&mut s.max_formant_hz, 1500.0..=8000.0).integer());
     });
 
-    app.formant_settings = s;
+    app.params.formants = s;
 
     if ui.button("Apply").clicked() {
         app.respawn_formants(ctx);

@@ -15,7 +15,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
         return;
     };
 
-    let mono = buf.slice_mono(app.view_start, app.view_end);
+    let mono = buf.slice_mono(app.view.start, app.view.end);
     if mono.is_empty() { return; }
 
     // one pixel column = one chunk of samples, drawn as a min/max vertical line.
@@ -37,10 +37,10 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     }
 
     // Selection overlay
-    if let Some((s, e)) = app.selection {
-        let dur = app.view_end - app.view_start;
-        let x0  = rect.left() + ((s - app.view_start) / dur) as f32 * rect.width();
-        let x1  = rect.left() + ((e - app.view_start) / dur) as f32 * rect.width();
+    if let Some((s, e)) = app.view.selection {
+        let dur = app.view.end - app.view.start;
+        let x0  = rect.left() + ((s - app.view.start) / dur) as f32 * rect.width();
+        let x1  = rect.left() + ((e - app.view.start) / dur) as f32 * rect.width();
         painter.rect_filled(
             egui::Rect::from_x_y_ranges(x0..=x1, rect.y_range()),
             0.0, egui::Color32::from_rgba_unmultiplied(72, 152, 210, 45),
@@ -52,15 +52,15 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     // guarding against an edge case that shouldn't exist but keeps existing anyway heh
     if response.dragged() {
         if let Some(pos) = response.interact_pointer_pos() {
-            let t = (app.view_start + (pos.x - rect.left()) as f64
-                     / rect.width() as f64 * (app.view_end - app.view_start))
-                    .clamp(app.view_start, app.view_end);
-            match app.selection {
-                None         => app.selection = Some((t, t)),
-                Some((s, _)) => app.selection = Some((s.min(t), s.max(t))),
+            let t = (app.view.start + (pos.x - rect.left()) as f64
+                     / rect.width() as f64 * (app.view.end - app.view.start))
+                    .clamp(app.view.start, app.view.end);
+            match app.view.selection {
+                None         => app.view.selection = Some((t, t)),
+                Some((s, _)) => app.view.selection = Some((s.min(t), s.max(t))),
             }
         }
     }
     // double-click to clear — simple, obvious, works
-    if response.double_clicked() { app.selection = None; }
+    if response.double_clicked() { app.view.selection = None; }
 }
