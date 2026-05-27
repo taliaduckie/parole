@@ -485,20 +485,23 @@ mod tests {
 
     #[test]
     fn zoom_around_clamps_to_left_edge() {
-        // Anchor near 0; zooming out 4x would push start < 0
+        // View [0.5, 1.5], anchor at the middle (t=1.0). Zoom out 4x →
+        // new_dur=4, would put new_start at -1. Clamp to 0, shift right
         let mut v = view(0.5, 1.5);
-        v.zoom_around(0.5, 4.0, Some(100.0));
+        v.zoom_around(1.0, 4.0, Some(100.0));
         assert_eq!(v.start, 0.0);
-        // duration is preserved (just shifted right)
         let new_dur = v.end - v.start;
         assert!((new_dur - 4.0).abs() < 1e-9);
     }
 
     #[test]
     fn zoom_around_clamps_to_right_edge() {
+        // View [8, 9], anchor at the middle (t=8.5). Zoom out 4x → new_end
+        // would land at 10.5, past the 10s file end. Clamp to 10, shift left
         let mut v = view(8.0, 9.0);
-        v.zoom_around(9.0, 4.0, Some(10.0));
-        assert!((v.end - 10.0).abs() < 1e-9);
+        v.zoom_around(8.5, 4.0, Some(10.0));
+        assert!((v.end   - 10.0).abs() < 1e-9);
+        assert!((v.start - 6.0).abs()  < 1e-9);
         let new_dur = v.end - v.start;
         assert!((new_dur - 4.0).abs() < 1e-9);
     }
