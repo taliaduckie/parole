@@ -1,6 +1,6 @@
-//! Microphone capture via cpal.
+//! Microphone capture via cpal
 //! Owns an input stream while recording and accumulates samples
-//! (downmixed to mono) into a shared buffer.
+//! (downmixed to mono) into a shared buffer
 
 use anyhow::{anyhow, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -28,7 +28,7 @@ impl Recorder {
         self.stream.is_some()
     }
 
-    /// Drains any error reported by the cpal callback since the last call.
+    /// Drains any error reported by the cpal callback since the last call
     pub fn take_runtime_error(&self) -> Option<String> {
         self.runtime_error.lock().take()
     }
@@ -102,7 +102,7 @@ impl Recorder {
         Ok(())
     }
 
-    /// Stop the stream and return the captured samples (mono, f32, at `sample_rate`).
+    /// Stop the stream and return the captured samples (mono, f32, at `sample_rate`)
     pub fn stop(&mut self) -> Vec<f32> {
         self.stream = None;
         std::mem::take(&mut *self.samples.lock())
@@ -115,7 +115,7 @@ impl Default for Recorder {
     }
 }
 
-/// Append `data` (interleaved, `channels`-channel) to `buf`, downmixing to mono.
+/// Append `data` (interleaved, `channels`-channel) to `buf`, downmixing to mono
 pub(crate) fn append_downmixed(buf: &Arc<Mutex<Vec<f32>>>, data: &[f32], channels: usize) {
     let mut g = buf.lock();
     if channels <= 1 {

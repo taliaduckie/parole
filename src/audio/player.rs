@@ -1,7 +1,7 @@
-//! Audio playback via cpal.
+//! Audio playback via cpal
 //! Owns an output stream while playing. Mono source is duplicated to all
 //! output channels; sample-rate mismatch is handled by linear resampling
-//! in the output callback.
+//! in the output callback
 
 use anyhow::{anyhow, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 pub struct AudioPlayer {
     samples: Arc<Mutex<Vec<f32>>>,
-    /// Fractional read position in source samples.
+    /// Fractional read position in source samples
     cursor: Arc<Mutex<f64>>,
     src_rate: Arc<Mutex<u32>>,
     playing: Arc<AtomicBool>,
@@ -44,10 +44,10 @@ impl AudioPlayer {
         self.runtime_error.lock().take()
     }
 
-    /// Start (or restart) playback of `samples` at `sample_rate`.
-    /// Replaces any in-flight stream.
+    /// Start (or restart) playback of `samples` at `sample_rate`
+    /// Replaces any in-flight stream
     pub fn play(&mut self, samples: Vec<f32>, sample_rate: u32) -> Result<()> {
-        // Drop any prior stream before installing the new one.
+        // Drop any prior stream before installing the new one
         self.stream = None;
         self.playing.store(false, Ordering::Relaxed);
 
@@ -142,7 +142,7 @@ impl Default for AudioPlayer {
 
 /// Fill `out` (interleaved, `out_channels`-channel) by reading mono source
 /// samples with linear resampling. `cursor` is advanced in place. Returns
-/// true if playback reached the end of `src` (the tail is filled with silence).
+/// true if playback reached the end of `src` (the tail is filled with silence)
 pub(crate) fn fill_output_f32(
     out: &mut [f32],
     src: &[f32],
@@ -225,7 +225,7 @@ mod tests {
         let ended = fill_output_f32(&mut out, &src, &mut cur, 1.0, 1);
         // Last frame writes from src[3..4] which trips the "end" guard since
         // the linear interp needs src[i+1]; that's expected behavior — we get
-        // 3 real samples + a silence tail.
+        // 3 real samples + a silence tail
         assert!(ended);
         assert!((out[0] - 0.1).abs() < 1e-6);
         assert!((out[1] - 0.2).abs() < 1e-6);

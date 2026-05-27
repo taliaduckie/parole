@@ -1,4 +1,4 @@
-//! F0 extraction via normalised autocorrelation.
+//! F0 extraction via normalised autocorrelation
 //! good enough for most purposes. maybe not for phoneticians who are paying very
 //! close attention. hi if that's u!
 
@@ -17,7 +17,7 @@ impl PitchTrack {
 }
 
 /// User-tweakable knobs for pitch extraction. Window and hop stay internal —
-/// users mostly want to tell us where to look for F0, and how strict to be.
+/// users mostly want to tell us where to look for F0, and how strict to be
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PitchSettings {
     pub min_hz:             f32,
@@ -28,7 +28,7 @@ pub struct PitchSettings {
 impl Default for PitchSettings {
     fn default() -> Self {
         // 75–600 Hz covers most adult voices comfortably; 0.45 was the
-        // pre-existing magic number, which I'm choosing to inherit rather than relitigate.
+        // pre-existing magic number, which I'm choosing to inherit rather than relitigate
         Self { min_hz: 75.0, max_hz: 600.0, voicing_threshold: 0.45 }
     }
 }
@@ -40,7 +40,7 @@ pub fn extract(buf: &AudioBuffer, settings: PitchSettings) -> PitchTrack {
     let hop     = 256usize;
     // Defensive clamp: max_hz < min_hz would give an empty lag range and
     // every frame returning None — confusing for the user, prevents the panic
-    // that comes from RangeInclusive<usize>::start > end.
+    // that comes from RangeInclusive<usize>::start > end
     let lo = settings.min_hz.max(1.0);
     let hi = settings.max_hz.max(lo + 1.0);
     let min_lag = (sr / hi).ceil()  as usize;
@@ -87,7 +87,7 @@ mod tests {
     }
 
     /// Median voiced F0 across all voiced frames — robust to a few outliers
-    /// near the boundaries (where the window straddles startup transients).
+    /// near the boundaries (where the window straddles startup transients)
     fn median_voiced(track: &PitchTrack) -> Option<f32> {
         let mut hz: Vec<f32> = track.frames.iter().filter_map(|f| *f).collect();
         if hz.is_empty() { return None; }
@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn extract_finds_low_pitch_near_floor() {
-        // 100 Hz is comfortably above the 75 Hz lower bound — male voice territory.
+        // 100 Hz is comfortably above the 75 Hz lower bound — male voice territory
         let buf = sine(100.0, 16000, 1.0);
         let track = extract(&buf, PitchSettings::default());
         let med = median_voiced(&track).expect("expected voiced frames");
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn extract_marks_silence_as_unvoiced() {
-        // pure silence: nothing in there to find. and we admit it.
+        // pure silence: nothing in there to find. and we admit it
         let buf = AudioBuffer { samples: vec![0.0; 16000], sample_rate: 16000, channels: 1 };
         let track = extract(&buf, PitchSettings::default());
         assert!(
@@ -135,7 +135,7 @@ mod tests {
     #[test]
     fn extract_marks_white_noise_as_mostly_unvoiced() {
         // Deterministic xorshift noise — doesn't have a periodic structure so
-        // the autocorrelation peak shouldn't clear the 0.45 threshold.
+        // the autocorrelation peak shouldn't clear the 0.45 threshold
         let mut seed: u32 = 0xCAFEF00D;
         let samples: Vec<f32> = (0..16000)
             .map(|_| {
@@ -149,7 +149,7 @@ mod tests {
         let track = extract(&buf, PitchSettings::default());
         let voiced = track.frames.iter().filter(|f| f.is_some()).count();
         let total = track.frames.len();
-        // I'll allow a few stray frames — the ACF is allowed its little hallucinations.
+        // I'll allow a few stray frames — the ACF is allowed its little hallucinations
         assert!(
             voiced * 4 < total,
             "noise was reported as voiced in {}/{} frames — expected mostly unvoiced",
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn extract_handles_short_buffer_gracefully() {
-        // shorter than the analysis window — windows() yields nothing, no panic.
+        // shorter than the analysis window — windows() yields nothing, no panic
         let buf = AudioBuffer { samples: vec![0.1; 100], sample_rate: 16000, channels: 1 };
         let track = extract(&buf, PitchSettings::default());
         assert!(track.frames.is_empty());
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn high_voicing_threshold_marks_more_frames_unvoiced() {
-        // Same input, two thresholds: the strict one should kill at least as many frames.
+        // Same input, two thresholds: the strict one should kill at least as many frames
         let buf = sine(200.0, 16000, 1.0);
         let lax = extract(&buf, PitchSettings { voicing_threshold: 0.30, ..Default::default() });
         let strict = extract(&buf, PitchSettings { voicing_threshold: 0.95, ..Default::default() });
@@ -189,13 +189,13 @@ mod tests {
     #[test]
     fn pitch_range_outside_target_makes_signal_unvoiced() {
         // 200 Hz sine searched in 400-600 Hz window — should find nothing,
-        // because the true period's lag is outside the (min_lag, max_lag) range.
+        // because the true period's lag is outside the (min_lag, max_lag) range
         let buf = sine(200.0, 16000, 1.0);
         let track = extract(&buf, PitchSettings {
             min_hz: 400.0, max_hz: 600.0, voicing_threshold: 0.45,
         });
         let voiced = track.frames.iter().filter(|f| f.is_some()).count();
-        // I'll allow a tiny stragglers — but the great majority should be None.
+        // I'll allow a tiny stragglers — but the great majority should be None
         assert!(voiced * 5 < track.frames.len(),
             "expected mostly-unvoiced for out-of-range sine, got {}/{}",
             voiced, track.frames.len());
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn extract_does_not_panic_when_min_exceeds_max() {
-        // The clamp inside extract should keep us out of the panic zone.
+        // The clamp inside extract should keep us out of the panic zone
         let buf = sine(200.0, 16000, 0.2);
         let _ = extract(&buf, PitchSettings {
             min_hz: 800.0, max_hz: 100.0, voicing_threshold: 0.45,

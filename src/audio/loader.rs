@@ -1,5 +1,5 @@
-//! Audio loading via symphonia. Decodes WAV/FLAC/MP3 to interleaved f32.
-//! symphonia does the heavy lifting here. we just hold the door open.
+//! Audio loading via symphonia. Decodes WAV/FLAC/MP3 to interleaved f32
+//! symphonia does the heavy lifting here. we just hold the door open
 
 use anyhow::{Context, Result};
 use std::path::Path;
@@ -38,7 +38,7 @@ impl AudioBuffer {
         let sr   = self.sample_rate as f64;
         let s    = (start_sec * sr) as usize;
         // .min(mono.len()) is doing quiet heroics here — guarding against view_end
-        // drifting past the actual audio end. I've named it; I'm moving on.
+        // drifting past the actual audio end. I've named it; I'm moving on
         let e    = ((end_sec * sr) as usize).min(mono.len());
         mono[s..e].to_vec()
     }
@@ -60,8 +60,8 @@ pub fn load_audio(path: &Path) -> Result<AudioBuffer> {
     let mut format  = probed.format;
     let track       = format.default_track().context("No audio tracks")?;
     let track_id    = track.id;
-    // if sample_rate is missing from the file we just... assume 44100.
-    // confident and wrong is still a vibe.
+    // if sample_rate is missing from the file we just... assume 44100
+    // confident and wrong is still a vibe
     let sample_rate = track.codec_params.sample_rate.unwrap_or(44100);
     let channels    = track.codec_params.channels.map(|c| c.count() as u16).unwrap_or(1);
 
@@ -71,9 +71,9 @@ pub fn load_audio(path: &Path) -> Result<AudioBuffer> {
 
     let mut all_samples = Vec::new();
     loop {
-        // symphonia signals end-of-stream as an Err, so we break on any error.
-        // distinguishing "done" from "actually broken" would require effort I've redirected elsewhere.
-        // it works. I've made peace with the fact that it shouldn't.
+        // symphonia signals end-of-stream as an Err, so we break on any error
+        // distinguishing "done" from "actually broken" would require effort I've redirected elsewhere
+        // it works. I've made peace with the fact that it shouldn't
         let packet = match format.next_packet() { Ok(p) => p, Err(_) => break };
         if packet.track_id() != track_id { continue; }
         // decode errors are silently skipped — technically correct in the same way "fine" is technically an answer
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn slice_mono_normal_range() {
-        // 4 samples, 4Hz → 1s long. Slice 0.25..0.75 → samples [1,2].
+        // 4 samples, 4Hz → 1s long. Slice 0.25..0.75 → samples [1,2]
         let buf = AudioBuffer {
             samples: vec![10.0, 11.0, 12.0, 13.0],
             sample_rate: 4,
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn slice_mono_works_on_stereo_input() {
-        // Stereo source gets downmixed first, then sliced.
+        // Stereo source gets downmixed first, then sliced
         let buf = AudioBuffer {
             samples: vec![1.0, 3.0, 2.0, 4.0, 0.0, 0.0, 5.0, 7.0],
             sample_rate: 4,
@@ -229,7 +229,7 @@ mod tests {
 
         let loaded = super::load_audio(&path).unwrap();
         assert_eq!(loaded.channels, 2);
-        // Interleaved samples are preserved as-is.
+        // Interleaved samples are preserved as-is
         assert_eq!(loaded.samples.len(), 6);
         // duration = 3 frames / 44100Hz
         assert!((loaded.duration_secs() - 3.0 / 44100.0).abs() < 1e-9);

@@ -45,7 +45,7 @@ fn playback_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut PraatlyApp
         app.ui.error(err);
     }
     // Repaint while playing so the Play→Stop label flips on its own when
-    // the audio thread reaches end-of-buffer.
+    // the audio thread reaches end-of-buffer
     if is_playing {
         ctx.request_repaint();
     }
@@ -70,7 +70,7 @@ fn recording_section(ui: &mut egui::Ui, app: &mut PraatlyApp) {
         }
     }
 
-    // Surface any error reported asynchronously by the cpal callback.
+    // Surface any error reported asynchronously by the cpal callback
     if let Some(err) = app.recording.recorder.take_runtime_error() {
         app.ui.error(err);
     }
@@ -137,8 +137,8 @@ fn stop_recording_and_offer_save(app: &mut PraatlyApp) {
     offer_save_dialog(app);
 }
 
-/// Shared "where would you like to save this?" → call the right encoder.
-/// Used both by the auto-prompt-after-stop path and the manual Save button.
+/// Shared "where would you like to save this?" → call the right encoder
+/// Used both by the auto-prompt-after-stop path and the manual Save button
 fn offer_save_dialog(app: &mut PraatlyApp) {
     let (filter_name, ext, file_name) = match app.recording.save_format {
         SaveFormat::Wav => ("WAV audio", vec!["wav"], "recording.wav"),

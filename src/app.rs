@@ -1,5 +1,5 @@
-//! Top-level application state and egui update loop.
-//! this file has several jobs and handles most of them with dignity.
+//! Top-level application state and egui update loop
+//! this file has several jobs and handles most of them with dignity
 
 use eframe::egui;
 use std::path::PathBuf;
@@ -24,7 +24,7 @@ pub enum SaveFormat {
 
 /// Severity flavour for status-bar messages. Drives the colour the toolbar
 /// renders the text in — you should be able to tell at a glance whether the
-/// thing that just happened was good news.
+/// thing that just happened was good news
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusKind {
     Info,
@@ -50,7 +50,7 @@ impl StatusMessage {
     }
 }
 
-/// Everything the recorder needs to remember between frames.
+/// Everything the recorder needs to remember between frames
 pub struct RecordingState {
     pub recorder:     Recorder,
     pub started_at:   Option<Instant>,
@@ -75,8 +75,8 @@ impl Default for RecordingState {
     fn default() -> Self { Self::new() }
 }
 
-/// Computed DSP outputs, plus the GPU-side cache for the spectrogram.
-/// All `Option`s — None means "not computed yet (or just invalidated)".
+/// Computed DSP outputs, plus the GPU-side cache for the spectrogram
+/// All `Option`s — None means "not computed yet (or just invalidated)"
 #[derive(Default)]
 pub struct DspResults {
     pub spectrogram:         Option<SpectrogramData>,
@@ -85,7 +85,7 @@ pub struct DspResults {
     pub spectrogram_texture: Option<egui::TextureHandle>,
 }
 
-/// In-flight worker handles. Each becomes None once its result lands in DspResults.
+/// In-flight worker handles. Each becomes None once its result lands in DspResults
 #[derive(Default)]
 pub struct DspJobs {
     pub spectrogram: Option<DspJob<SpectrogramData>>,
@@ -93,7 +93,7 @@ pub struct DspJobs {
     pub formants:    Option<DspJob<FormantTrack>>,
 }
 
-/// User-tweakable knobs that drive the DSP passes. Settings panel writes here.
+/// User-tweakable knobs that drive the DSP passes. Settings panel writes here
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DspParams {
     pub spectrogram: SpectrogramSettings,
@@ -103,7 +103,7 @@ pub struct DspParams {
 
 /// What's visible right now: time window, selection, and which overlays/panels
 /// the user has on. Pretty much anything that affects "what the user sees" but
-/// not "what's been computed" lives here.
+/// not "what's been computed" lives here
 pub struct ViewState {
     pub start:            f64,
     pub end:              f64,
@@ -129,7 +129,7 @@ impl Default for ViewState {
 }
 
 /// Floaty UI bits that aren't really part of the analysis state — modal toggles,
-/// status bar. The kind of state that's allowed to be ephemeral.
+/// status bar. The kind of state that's allowed to be ephemeral
 #[derive(Default)]
 pub struct UiState {
     pub show_help:     bool,
@@ -194,7 +194,7 @@ impl PraatlyApp {
 
                 // Wipe any stale results — old data is for the wrong file now,
                 // and any in-flight jobs from a previous load are quietly orphaned
-                // (their senders will fail silently when they finally finish).
+                // (their senders will fail silently when they finally finish)
                 self.dsp = DspResults::default();
 
                 self.buffer = Some(buf);
@@ -209,13 +209,13 @@ impl PraatlyApp {
         }
     }
 
-    /// Re-run the spectrogram pass with the current settings, on a worker thread.
-    /// No-op if no audio is loaded.
+    /// Re-run the spectrogram pass with the current settings, on a worker thread
+    /// No-op if no audio is loaded
     pub fn respawn_spectrogram(&mut self, ctx: &egui::Context) {
         let Some(buf) = self.buffer.as_ref().map(Arc::clone) else { return; };
         let s = self.params.spectrogram;
         // Wipe the old result + texture immediately so the UI shows "loading"
-        // instead of mismatched-stale.
+        // instead of mismatched-stale
         self.dsp.spectrogram = None;
         self.dsp.spectrogram_texture = None;
         self.jobs.spectrogram = Some(DspJob::spawn(ctx.clone(), move || {
@@ -241,15 +241,15 @@ impl PraatlyApp {
         }));
     }
 
-    /// Drain any DSP jobs that have completed and swap their results into place.
-    /// Cheap to call every frame — try_recv is non-blocking.
+    /// Drain any DSP jobs that have completed and swap their results into place
+    /// Cheap to call every frame — try_recv is non-blocking
     fn poll_dsp_jobs(&mut self) {
         if let Some(job) = &self.jobs.spectrogram {
             if let Some(result) = job.poll() {
                 self.dsp.spectrogram = Some(result);
                 self.jobs.spectrogram = None;
                 // Force a texture rebuild on next paint — old pixels are
-                // for a stale spectrogram (or there were no pixels to begin with).
+                // for a stale spectrogram (or there were no pixels to begin with)
                 self.dsp.spectrogram_texture = None;
             }
         }
@@ -267,7 +267,7 @@ impl PraatlyApp {
         }
     }
 
-    /// Save recorded samples to a WAV file at the given path.
+    /// Save recorded samples to a WAV file at the given path
     pub fn save_recording_wav(&mut self, path: PathBuf) {
         if self.recording.samples.is_empty() {
             self.ui.info("Nothing recorded yet.");
@@ -286,7 +286,7 @@ impl PraatlyApp {
         }
     }
 
-    /// Save recorded samples to an MP3 file at the given path.
+    /// Save recorded samples to an MP3 file at the given path
     pub fn save_recording_mp3(&mut self, path: PathBuf) {
         if self.recording.samples.is_empty() {
             self.ui.info("Nothing recorded yet.");
@@ -308,7 +308,7 @@ impl PraatlyApp {
 
 impl eframe::App for PraatlyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Pick up any DSP results that finished between frames. Cheap; try_recv is non-blocking.
+        // Pick up any DSP results that finished between frames. Cheap; try_recv is non-blocking
         self.poll_dsp_jobs();
 
         // Keyboard shortcut: F1 toggles help

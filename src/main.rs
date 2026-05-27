@@ -1,6 +1,6 @@
-// hi. welcome to parole. we start here.
+// hi. welcome to parole. we start here
 // if this file ever gets longer than 30 lines something has gone wrong
-// and I will want to talk about it.
+// and I will want to talk about it
 
 use eframe::egui;
 use std::path::PathBuf;

@@ -1,6 +1,6 @@
-/// Help panel — a floating window explaining what everything does.
+/// Help panel — a floating window explaining what everything does
 ///
-/// Toggled by the ? Help button in the toolbar, or F1.
+/// Toggled by the ? Help button in the toolbar, or F1
 /// Written to be genuinely useful rather than just existing. Hi praat 
 /// NO TEA NO SHADE
 

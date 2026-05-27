@@ -37,7 +37,7 @@ fn spectrogram_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut Praatly
 
     ui.horizontal(|ui| {
         ui.label("Window size:");
-        // Snap to power-of-2 sizes — the rest just confuses the FFT planner.
+        // Snap to power-of-2 sizes — the rest just confuses the FFT planner
         for size in [256, 512, 1024, 2048, 4096] {
             ui.selectable_value(&mut s.window_size, size, format!("{}", size));
         }
@@ -72,7 +72,7 @@ fn pitch_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut PraatlyApp) {
     });
 
     // Keep min < max; the extractor clamps too but the slider experience is
-    // less surprising if we enforce it here.
+    // less surprising if we enforce it here
     if s.min_hz >= s.max_hz {
         s.max_hz = (s.min_hz + 10.0).min(2000.0);
     }

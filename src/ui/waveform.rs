@@ -18,8 +18,8 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     let mono = buf.slice_mono(app.view.start, app.view.end);
     if mono.is_empty() { return; }
 
-    // one pixel column = one chunk of samples, drawn as a min/max vertical line.
-    // lossy? yes. fast? also yes. this is a workbench not an oscilloscope. woot.
+    // one pixel column = one chunk of samples, drawn as a min/max vertical line
+    // lossy? yes. fast? also yes. this is a workbench not an oscilloscope. woot
     let width = rect.width() as usize;
     let chunk  = (mono.len() / width).max(1);
     let mid_y  = rect.center().y;
@@ -47,8 +47,8 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
         );
     }
 
-    // drag to select: first drag sets the anchor, subsequent motion extends from it.
-    // the .min/.max at the end quietly handles dragging leftward without complaint.
+    // drag to select: first drag sets the anchor, subsequent motion extends from it
+    // the .min/.max at the end quietly handles dragging leftward without complaint
     // guarding against an edge case that shouldn't exist but keeps existing anyway heh
     if response.dragged() {
         if let Some(pos) = response.interact_pointer_pos() {

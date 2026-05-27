@@ -1,7 +1,7 @@
-//! Formant extraction via LPC + polynomial root-finding.
+//! Formant extraction via LPC + polynomial root-finding
 //!
 //! Pipeline: pre-emphasis → Hann window → autocorrelation LPC (Levinson-Durbin)
-//! → Durand-Kerner root-finding → filter roots by frequency/bandwidth → F1/F2/F3.
+//! → Durand-Kerner root-finding → filter roots by frequency/bandwidth → F1/F2/F3
 
 use crate::audio::loader::AudioBuffer;
 use rustfft::num_complex::Complex;
@@ -26,17 +26,17 @@ impl FormantTrack {
 }
 
 /// User-tweakable knobs for formant tracking. Window/hop/order stay internal
-/// — the user mostly cares about how high to look (Praat's "max formant" knob).
+/// — the user mostly cares about how high to look (Praat's "max formant" knob)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FormantSettings {
     /// Upper bound on candidate formant frequency, in Hz. Roots above this
-    /// (and the bandwidth cap) are dropped before sorting.
+    /// (and the bandwidth cap) are dropped before sorting
     pub max_formant_hz: f32,
 }
 
 impl Default for FormantSettings {
     fn default() -> Self {
-        // 5500 Hz is Praat's default for adult speech.
+        // 5500 Hz is Praat's default for adult speech
         Self { max_formant_hz: 5500.0 }
     }
 }
@@ -47,11 +47,11 @@ pub fn extract(buf: &AudioBuffer, settings: FormantSettings) -> FormantTrack {
     let window    = 512usize;
     let hop       = 128usize;
     // Rule of thumb: LPC order ≈ 2 + sr/1000 — gives roughly two coefficients
-    // per expected formant within the band of interest.
+    // per expected formant within the band of interest
     let lpc_order = (2 + sr / 1000) as usize;
 
     // Pre-emphasis flattens the spectral tilt of voiced speech (~+6 dB/oct),
-    // which gives the autocorrelation matrix more numerical headroom.
+    // which gives the autocorrelation matrix more numerical headroom
     let pre = pre_emphasis(&mono, 0.97);
     let win = hann(window);
 
@@ -60,15 +60,15 @@ pub fn extract(buf: &AudioBuffer, settings: FormantSettings) -> FormantTrack {
         .map(|frame| {
             let windowed: Vec<f32> = frame.iter().zip(&win).map(|(&s, &w)| s * w).collect();
             let coeffs = lpc(&windowed, lpc_order);
-            // The polynomial of interest is z^p + a₁z^(p-1) + … + a_p.
-            // `coeffs` is [1, a₁, …, a_p]; in standard low-to-high form we reverse it.
+            // The polynomial of interest is z^p + a₁z^(p-1) + … + a_p
+            // `coeffs` is [1, a₁, …, a_p]; in standard low-to-high form we reverse it
             let mut poly: Vec<f32> = coeffs.iter().rev().copied().collect();
             // Skip silent/degenerate frames where the leading coefficient (after reverse,
-            // this is a_p) is essentially zero — Durand-Kerner doesn't help us there.
+            // this is a_p) is essentially zero — Durand-Kerner doesn't help us there
             if poly.iter().all(|c| c.abs() < 1e-9) {
                 return FormantFrame::default();
             }
-            // Normalise so the leading coefficient is 1 (Durand-Kerner expects monic).
+            // Normalise so the leading coefficient is 1 (Durand-Kerner expects monic)
             let lead = *poly.last().unwrap();
             if lead.abs() > 1e-9 {
                 for c in poly.iter_mut() { *c /= lead; }
@@ -98,7 +98,7 @@ fn hann(n: usize) -> Vec<f32> {
         .collect()
 }
 
-/// Levinson-Durbin recursion. Returns p+1 LPC coefficients with a[0] = 1.
+/// Levinson-Durbin recursion. Returns p+1 LPC coefficients with a[0] = 1
 fn lpc(frame: &[f32], order: usize) -> Vec<f32> {
     let n = frame.len();
     let r: Vec<f32> = (0..=order)
@@ -121,14 +121,14 @@ fn lpc(frame: &[f32], order: usize) -> Vec<f32> {
 
 /// Find all complex roots of a real-coefficient polynomial in standard form
 /// `c[0] + c[1]·x + … + c[n]·x^n` (must be monic: c[n] ≈ 1) using the
-/// Durand-Kerner iteration.
+/// Durand-Kerner iteration
 pub(crate) fn find_roots(coeffs: &[f32]) -> Vec<Complex<f32>> {
     if coeffs.len() < 2 { return Vec::new(); }
     let n = coeffs.len() - 1;
     let c64: Vec<Complex<f64>> = coeffs.iter().map(|&x| Complex::new(x as f64, 0.0)).collect();
 
     // Initial guesses: equally-spaced points on a circle of radius 0.4, with a
-    // small angular offset so we don't accidentally land on roots-of-unity.
+    // small angular offset so we don't accidentally land on roots-of-unity
     let mut roots: Vec<Complex<f64>> = (0..n)
         .map(|k| {
             let theta = 2.0 * std::f64::consts::PI * k as f64 / n as f64 + 0.4;
@@ -143,12 +143,12 @@ pub(crate) fn find_roots(coeffs: &[f32]) -> Vec<Complex<f32>> {
         let snapshot = roots.clone();
         for k in 0..n {
             let z = snapshot[k];
-            // p(z) via Horner from the top coefficient down.
+            // p(z) via Horner from the top coefficient down
             let mut p = c64[n];
             for i in (0..n).rev() {
                 p = p * z + c64[i];
             }
-            // Denominator: product of (z - z_j) for j ≠ k.
+            // Denominator: product of (z - z_j) for j ≠ k
             let mut denom = Complex::new(1.0, 0.0);
             for j in 0..n {
                 if j != k { denom *= z - snapshot[j]; }
@@ -165,16 +165,16 @@ pub(crate) fn find_roots(coeffs: &[f32]) -> Vec<Complex<f32>> {
     roots.into_iter().map(|z| Complex::new(z.re as f32, z.im as f32)).collect()
 }
 
-/// Convert LPC polynomial roots to F1/F2/F3.
+/// Convert LPC polynomial roots to F1/F2/F3
 /// Each root z = r·e^(jθ) with positive imaginary part contributes a candidate
 /// formant at frequency θ·sr/(2π) and bandwidth -ln(r)·sr/π. We discard wide
 /// bands and out-of-band candidates, then sort by frequency. `max_hz` caps the
-/// upper search range — anything above is treated as out-of-band.
+/// upper search range — anything above is treated as out-of-band
 pub(crate) fn roots_to_formants(roots: &[Complex<f32>], sr: u32, max_hz: f32) -> FormantFrame {
     let sr_f = sr as f32;
     let nyquist = sr_f / 2.0;
     // Hard upper bound: never search above Nyquist - 50 (no real spectrum
-    // up there) regardless of what max_hz claims.
+    // up there) regardless of what max_hz claims
     let upper = max_hz.min(nyquist - 50.0);
     let mut formants: Vec<f32> = roots
         .iter()
@@ -182,12 +182,12 @@ pub(crate) fn roots_to_formants(roots: &[Complex<f32>], sr: u32, max_hz: f32) ->
         .filter_map(|z| {
             let r = z.norm();
             // Roots outside the unit circle are non-causal; near-zero magnitude
-            // means we lost the angle to numerical noise.
+            // means we lost the angle to numerical noise
             if !(1e-3..1.0).contains(&r) { return None; }
             let freq = z.arg().abs() * sr_f / (2.0 * std::f32::consts::PI);
             let bw = -r.ln() * sr_f / std::f32::consts::PI;
             // Speech formant band: ~90 Hz up to the user-set ceiling; bandwidth
-            // cap of 400 Hz screens out spurious wide poles.
+            // cap of 400 Hz screens out spurious wide poles
             if freq < 90.0 || freq > upper { return None; }
             if bw > 400.0 { return None; }
             Some(freq)
@@ -218,7 +218,7 @@ mod tests {
         reals.sort_by(|a, b| a.partial_cmp(b).unwrap());
         assert!(approx(reals[0], -0.3, 1e-3), "got {:?}", reals);
         assert!(approx(reals[1], 0.5, 1e-3), "got {:?}", reals);
-        // Real roots should have ~0 imaginary part.
+        // Real roots should have ~0 imaginary part
         for z in &roots { assert!(z.im.abs() < 1e-3, "non-real im: {:?}", z); }
     }
 
@@ -231,7 +231,7 @@ mod tests {
             assert!(approx(z.re, 0.8, 1e-3), "got {:?}", z);
             assert!(approx(z.im.abs(), 0.5, 1e-3), "got {:?}", z);
         }
-        // Conjugates: imaginary parts should sum to ~0.
+        // Conjugates: imaginary parts should sum to ~0
         assert!((roots[0].im + roots[1].im).abs() < 1e-3);
     }
 
@@ -243,8 +243,8 @@ mod tests {
 
     #[test]
     fn roots_to_formants_picks_three_lowest_in_band() {
-        // Construct roots at known formant frequencies (sr = 8000 → Nyquist 4000).
-        // Use radius 0.95 → bandwidth = -ln(0.95)·8000/π ≈ 130 Hz, well under 400.
+        // Construct roots at known formant frequencies (sr = 8000 → Nyquist 4000)
+        // Use radius 0.95 → bandwidth = -ln(0.95)·8000/π ≈ 130 Hz, well under 400
         let sr = 8000u32;
         let theta = |hz: f32| 2.0 * std::f32::consts::PI * hz / sr as f32;
         let roots = vec![
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn roots_to_formants_rejects_wide_bandwidth() {
-        // Radius 0.5 → bandwidth ≈ 1764 Hz at sr=8000, well over the 400 Hz cap.
+        // Radius 0.5 → bandwidth ≈ 1764 Hz at sr=8000, well over the 400 Hz cap
         let sr = 8000u32;
         let theta = 2.0 * std::f32::consts::PI * 1000.0 / sr as f32;
         let roots = vec![Complex::from_polar(0.5, theta)];
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn roots_to_formants_ignores_negative_imaginary_conjugates() {
-        // Only the upper-half-plane root should contribute.
+        // Only the upper-half-plane root should contribute
         let sr = 8000u32;
         let theta = 2.0 * std::f32::consts::PI * 1000.0 / sr as f32;
         let roots = vec![
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn lpc_recovers_known_ar_process() {
         // Generate a signal x[n] = 0.9·x[n-1] - 0.5·x[n-2] + impulse,
-        // then check that LPC(2) recovers a ≈ [1, -0.9, 0.5].
+        // then check that LPC(2) recovers a ≈ [1, -0.9, 0.5]
         let n = 1024;
         let mut x = vec![0.0_f32; n];
         x[0] = 1.0;
@@ -315,7 +315,7 @@ mod tests {
     fn roots_to_formants_respects_max_hz_cap() {
         // Same roots; same sr; vary max_hz. With a 4 kHz cap, the 3500 Hz
         // candidate survives and shows up as F3. With a 2 kHz cap it's dropped
-        // and only the lower two fill the slots.
+        // and only the lower two fill the slots
         let sr = 8000u32;
         let theta = |hz: f32| 2.0 * std::f32::consts::PI * hz / sr as f32;
         let roots = vec![
@@ -334,20 +334,20 @@ mod tests {
     #[test]
     fn extract_finds_a_formant_for_synthetic_resonator() {
         // Drive a 2-pole resonator at 1000 Hz with white-ish noise; extract should
-        // find F1 near 1000 Hz somewhere in the middle of the track.
+        // find F1 near 1000 Hz somewhere in the middle of the track
         let sr = 8000u32;
         let dur_secs = 1.0;
         let n = (sr as f32 * dur_secs) as usize;
         let f0 = 1000.0_f32;
         let r = 0.97_f32;
         let theta = 2.0 * std::f32::consts::PI * f0 / sr as f32;
-        // Resonator: y[n] = 2r·cos(θ)·y[n-1] - r²·y[n-2] + x[n].
+        // Resonator: y[n] = 2r·cos(θ)·y[n-1] - r²·y[n-2] + x[n]
         let a1 = 2.0 * r * theta.cos();
         let a2 = r * r;
         let mut y = vec![0.0_f32; n];
         let mut seed: u32 = 0x9E3779B9;
         for i in 0..n {
-            // xorshift-ish noise as input — deterministic, no extra deps.
+            // xorshift-ish noise as input — deterministic, no extra deps
             seed ^= seed << 13;
             seed ^= seed >> 17;
             seed ^= seed << 5;
@@ -358,7 +358,7 @@ mod tests {
         }
         let buf = AudioBuffer { samples: y, sample_rate: sr, channels: 1 };
         let track = extract(&buf, FormantSettings::default());
-        // Look at the middle of the track to skip startup transients.
+        // Look at the middle of the track to skip startup transients
         let mid = track.frames.len() / 2;
         let f1 = track.frames[mid].f1.expect("expected an F1 in the middle of the track");
         assert!(

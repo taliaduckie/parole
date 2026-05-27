@@ -1,12 +1,12 @@
-//! STFT spectrogram via rustfft.
+//! STFT spectrogram via rustfft
 //! if this file intimidates u a little: same. the math is real even if we
-//! don't talk about it at parties.
+//! don't talk about it at parties
 
 use rustfft::{FftPlanner, num_complex::Complex};
 use crate::audio::loader::AudioBuffer;
 
 /// User-tweakable knobs. Sensible defaults; the slider in the settings panel
-/// is what produces "interesting" values.
+/// is what produces "interesting" values
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpectrogramSettings {
     pub window_size: usize,
@@ -41,7 +41,7 @@ pub fn compute(buf: &AudioBuffer, window_size: usize, overlap: f64) -> Spectrogr
     let mono = buf.mono();
     let hop  = ((1.0 - overlap) * window_size as f64).round().max(1.0) as usize;
 
-    // Hann window — 0.5 * (1 - cos(2πi/N)).
+    // Hann window — 0.5 * (1 - cos(2πi/N))
     // this is what it looks like. I understand what it's doing and I want it on record
     // that I'm not happy about either of us being here
     let window: Vec<f32> = (0..window_size)
@@ -82,7 +82,7 @@ mod tests {
         AudioBuffer { samples, sample_rate, channels: 1 }
     }
 
-    /// Index of the loudest bin in a single STFT frame.
+    /// Index of the loudest bin in a single STFT frame
     fn argmax(frame: &[f32]) -> usize {
         frame.iter().enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
@@ -95,7 +95,7 @@ mod tests {
         let buf = sine(440.0, 16000, 0.5);
         let spec = compute(&buf, 1024, 0.5);
         assert_eq!(spec.n_bins(), 1024 / 2 + 1);
-        // 8000 samples, hop = 512 → frames where window fully fits.
+        // 8000 samples, hop = 512 → frames where window fully fits
         let expected = (8000usize - 1024) / 512 + 1;
         assert_eq!(spec.n_frames(), expected);
     }
@@ -109,7 +109,7 @@ mod tests {
             sample_rate: 16000,
         };
         assert_eq!(spec.bin_to_hz(0), 0.0);
-        // Last bin at index n_fft/2 should be at the Nyquist frequency.
+        // Last bin at index n_fft/2 should be at the Nyquist frequency
         assert!((spec.bin_to_hz(512) - 8000.0).abs() < 1e-3);
     }
 
@@ -128,8 +128,8 @@ mod tests {
 
     #[test]
     fn sine_peaks_in_expected_bin() {
-        // 1000 Hz sine at 16 kHz, 1024-pt FFT → bin spacing 15.625 Hz → expected bin 64.
-        // We allow ±1 bin of slop — the Hann window smears energy a little.
+        // 1000 Hz sine at 16 kHz, 1024-pt FFT → bin spacing 15.625 Hz → expected bin 64
+        // We allow ±1 bin of slop — the Hann window smears energy a little
         let buf = sine(1000.0, 16000, 0.5);
         let spec = compute(&buf, 1024, 0.5);
         let mid_frame = &spec.magnitudes[spec.n_frames() / 2];
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn short_buffer_yields_no_frames() {
-        // Buffer shorter than window — should produce zero frames, no panic.
+        // Buffer shorter than window — should produce zero frames, no panic
         let buf = AudioBuffer { samples: vec![0.1; 500], sample_rate: 16000, channels: 1 };
         let spec = compute(&buf, 1024, 0.5);
         assert_eq!(spec.n_frames(), 0);
@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn overlap_clamps_hop_to_at_least_one() {
         // overlap = 1.0 would naively give hop = 0. The compute clamps to 1
-        // so the loop terminates instead of helpfully crashing the universe.
+        // so the loop terminates instead of helpfully crashing the universe
         let buf = AudioBuffer { samples: vec![0.0; 2048], sample_rate: 16000, channels: 1 };
         let spec = compute(&buf, 1024, 1.0);
         assert_eq!(spec.hop_size, 1);
