@@ -128,6 +128,65 @@ impl Default for ViewState {
     }
 }
 
+/// Smallest visible window. Below this we'd start dividing by ~0 in time→pixel
+/// math and the user would be lost in their own audio
+const MIN_VIEW_DURATION: f64 = 1e-3;
+
+impl ViewState {
+    /// Zoom in so the current selection fills the view. Clears the selection
+    /// since you're now looking at exactly that range — no need to highlight
+    pub fn zoom_to_selection(&mut self) {
+        if let Some((s, e)) = self.selection {
+            if e - s > MIN_VIEW_DURATION {
+                self.start = s;
+                self.end = e;
+                self.selection = None;
+            }
+        }
+    }
+
+    /// Reset view to the whole loaded file
+    pub fn zoom_to_full(&mut self, file_duration: Option<f64>) {
+        self.start = 0.0;
+        if let Some(d) = file_duration {
+            self.end = d.max(MIN_VIEW_DURATION);
+        }
+    }
+
+    /// Multiplicative zoom around a time anchor (kept at the same screen position).
+    /// `factor` < 1 zooms in, > 1 zooms out. Clamps to [0, file_duration] when known
+    pub fn zoom_around(&mut self, anchor: f64, factor: f64, file_duration: Option<f64>) {
+        let cur_dur = self.end - self.start;
+        if cur_dur <= 0.0 { return; }
+        let new_dur = (cur_dur * factor).max(MIN_VIEW_DURATION);
+        let rel = ((anchor - self.start) / cur_dur).clamp(0.0, 1.0);
+        let mut new_start = anchor - rel * new_dur;
+        let mut new_end = new_start + new_dur;
+
+        // Clamp into [0, max_end]. If file_duration is unknown we let the right
+        // side float — load_file will reset view.end anyway
+        if let Some(max_end) = file_duration {
+            let max_end = max_end.max(MIN_VIEW_DURATION);
+            if new_dur >= max_end {
+                new_start = 0.0;
+                new_end = max_end;
+            } else if new_start < 0.0 {
+                new_start = 0.0;
+                new_end = new_dur;
+            } else if new_end > max_end {
+                new_end = max_end;
+                new_start = max_end - new_dur;
+            }
+        } else if new_start < 0.0 {
+            new_start = 0.0;
+            new_end = new_dur;
+        }
+
+        self.start = new_start;
+        self.end = new_end;
+    }
+}
+
 /// Floaty UI bits that aren't really part of the analysis state — modal toggles,
 /// status bar. The kind of state that's allowed to be ephemeral
 #[derive(Default)]
@@ -267,6 +326,11 @@ impl PraatlyApp {
         }
     }
 
+    /// Duration of the currently-loaded file in seconds, if any
+    pub fn buffer_duration(&self) -> Option<f64> {
+        self.buffer.as_deref().map(|b| b.duration_secs())
+    }
+
     /// Save recorded samples to a WAV file at the given path
     pub fn save_recording_wav(&mut self, path: PathBuf) {
         if self.recording.samples.is_empty() {
@@ -311,9 +375,20 @@ impl eframe::App for PraatlyApp {
         // Pick up any DSP results that finished between frames. Cheap; try_recv is non-blocking
         self.poll_dsp_jobs();
 
-        // Keyboard shortcut: F1 toggles help
-        if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
+        // Keyboard shortcuts
+        let (toggle_help, zoom_sel, zoom_all) = ctx.input(|i| (
+            i.key_pressed(egui::Key::F1),
+            i.key_pressed(egui::Key::Z) && !i.modifiers.shift,
+            (i.key_pressed(egui::Key::Z) && i.modifiers.shift) || i.key_pressed(egui::Key::A),
+        ));
+        if toggle_help {
             self.ui.show_help = !self.ui.show_help;
+        }
+        if zoom_sel {
+            self.view.zoom_to_selection();
+        }
+        if zoom_all {
+            self.view.zoom_to_full(self.buffer_duration());
         }
 
         crate::ui::toolbar::show(ctx, self);

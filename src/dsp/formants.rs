@@ -64,7 +64,7 @@ pub fn extract(buf: &AudioBuffer, settings: FormantSettings) -> FormantTrack {
             // `coeffs` is [1, a₁, …, a_p]; in standard low-to-high form we reverse it
             let mut poly: Vec<f32> = coeffs.iter().rev().copied().collect();
             // Skip silent/degenerate frames where the leading coefficient (after reverse,
-            // this is a_p) is essentially zero — Durand-Kerner doesn't help us there
+            // this is a_p) is essentially zero bc Durand-Kerner doesn't help us there
             if poly.iter().all(|c| c.abs() < 1e-9) {
                 return FormantFrame::default();
             }
