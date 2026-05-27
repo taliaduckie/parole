@@ -413,3 +413,125 @@ impl eframe::App for PraatlyApp {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn view(start: f64, end: f64) -> ViewState {
+        let mut v = ViewState::default();
+        v.start = start;
+        v.end = end;
+        v
+    }
+
+    #[test]
+    fn zoom_to_selection_sets_bounds_and_clears_selection() {
+        let mut v = view(0.0, 10.0);
+        v.selection = Some((2.0, 5.0));
+        v.zoom_to_selection();
+        assert!((v.start - 2.0).abs() < 1e-9);
+        assert!((v.end   - 5.0).abs() < 1e-9);
+        assert!(v.selection.is_none());
+    }
+
+    #[test]
+    fn zoom_to_selection_noop_without_selection() {
+        let mut v = view(0.0, 10.0);
+        v.zoom_to_selection();
+        assert!((v.start - 0.0).abs() < 1e-9);
+        assert!((v.end   - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn zoom_to_selection_noop_for_zero_width_selection() {
+        let mut v = view(0.0, 10.0);
+        v.selection = Some((4.0, 4.0));
+        v.zoom_to_selection();
+        assert!((v.start - 0.0).abs() < 1e-9);
+        assert!((v.end   - 10.0).abs() < 1e-9);
+        // selection preserved since we didn't act
+        assert_eq!(v.selection, Some((4.0, 4.0)));
+    }
+
+    #[test]
+    fn zoom_to_full_resets_to_file_bounds() {
+        let mut v = view(3.0, 7.0);
+        v.zoom_to_full(Some(12.5));
+        assert!((v.start - 0.0).abs() < 1e-9);
+        assert!((v.end   - 12.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn zoom_to_full_without_known_duration_only_resets_start() {
+        let mut v = view(3.0, 7.0);
+        v.zoom_to_full(None);
+        assert_eq!(v.start, 0.0);
+        // end untouched since we don't know how big the file is
+        assert!((v.end - 7.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn zoom_around_in_keeps_anchor_at_same_relative_position() {
+        // View [0, 10], anchor at t=2 (20% across). After zooming to 50%
+        // duration, anchor should still be at the 20% mark
+        let mut v = view(0.0, 10.0);
+        v.zoom_around(2.0, 0.5, Some(100.0));
+        let new_dur = v.end - v.start;
+        assert!((new_dur - 5.0).abs() < 1e-9);
+        let rel = (2.0 - v.start) / new_dur;
+        assert!((rel - 0.2).abs() < 1e-6, "anchor drifted: rel = {}", rel);
+    }
+
+    #[test]
+    fn zoom_around_clamps_to_left_edge() {
+        // Anchor near 0; zooming out 4x would push start < 0
+        let mut v = view(0.5, 1.5);
+        v.zoom_around(0.5, 4.0, Some(100.0));
+        assert_eq!(v.start, 0.0);
+        // duration is preserved (just shifted right)
+        let new_dur = v.end - v.start;
+        assert!((new_dur - 4.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn zoom_around_clamps_to_right_edge() {
+        let mut v = view(8.0, 9.0);
+        v.zoom_around(9.0, 4.0, Some(10.0));
+        assert!((v.end - 10.0).abs() < 1e-9);
+        let new_dur = v.end - v.start;
+        assert!((new_dur - 4.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn zoom_around_caps_at_file_duration() {
+        // Zooming out beyond file duration should fill the whole file
+        let mut v = view(2.0, 4.0);
+        v.zoom_around(3.0, 100.0, Some(10.0));
+        assert_eq!(v.start, 0.0);
+        assert!((v.end - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn zoom_around_respects_minimum_duration() {
+        let mut v = view(0.0, 10.0);
+        v.zoom_around(5.0, 0.0, Some(100.0));
+        assert!(v.end - v.start >= MIN_VIEW_DURATION);
+    }
+
+    #[test]
+    fn status_message_kinds_construct_distinctly() {
+        assert_eq!(StatusMessage::info("x").kind, StatusKind::Info);
+        assert_eq!(StatusMessage::success("x").kind, StatusKind::Success);
+        assert_eq!(StatusMessage::error("x").kind, StatusKind::Error);
+    }
+
+    #[test]
+    fn ui_state_helpers_set_status_with_right_kind() {
+        let mut ui = UiState::default();
+        ui.error("bad");
+        assert!(matches!(&ui.status, Some(s) if s.kind == StatusKind::Error && s.text == "bad"));
+        ui.success("good");
+        assert!(matches!(&ui.status, Some(s) if s.kind == StatusKind::Success));
+    }
+}

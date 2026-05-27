@@ -10,6 +10,8 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
             ui.separator();
             recording_section(ui, app);
             ui.separator();
+            zoom_section(ui, app);
+            ui.separator();
             view_toggles(ui, app);
             ui.separator();
             panel_toggles(ui, app);
@@ -153,6 +155,27 @@ fn offer_save_dialog(app: &mut PraatlyApp) {
             SaveFormat::Wav => app.save_recording_wav(path),
             SaveFormat::Mp3 => app.save_recording_mp3(path),
         }
+    }
+}
+
+fn zoom_section(ui: &mut egui::Ui, app: &mut PraatlyApp) {
+    let has_sel = app.view.selection.is_some();
+    let has_buf = app.buffer.is_some();
+
+    // Zoom in (around the centre of the current window)
+    if ui.add_enabled(has_buf, egui::Button::new("🔍+")).on_hover_text("Zoom in").clicked() {
+        let centre = (app.view.start + app.view.end) * 0.5;
+        app.view.zoom_around(centre, 0.5, app.buffer_duration());
+    }
+    if ui.add_enabled(has_buf, egui::Button::new("🔍−")).on_hover_text("Zoom out").clicked() {
+        let centre = (app.view.start + app.view.end) * 0.5;
+        app.view.zoom_around(centre, 2.0, app.buffer_duration());
+    }
+    if ui.add_enabled(has_sel, egui::Button::new("Sel")).on_hover_text("Zoom to selection (Z)").clicked() {
+        app.view.zoom_to_selection();
+    }
+    if ui.add_enabled(has_buf, egui::Button::new("All")).on_hover_text("Reset zoom (Shift+Z or A)").clicked() {
+        app.view.zoom_to_full(app.buffer_duration());
     }
 }
 

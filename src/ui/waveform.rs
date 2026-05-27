@@ -63,4 +63,23 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     }
     // double-click to clear — simple, obvious, works
     if response.double_clicked() { app.view.selection = None; }
+
+    // Mouse wheel / trackpad scroll = zoom around the cursor's time position.
+    // Pinch-to-zoom on mac also feeds zoom_delta — multiply 'em together
+    if response.hovered() {
+        let (scroll_y, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
+        // scroll up → factor < 1 (zoom in); scroll down → factor > 1 (zoom out)
+        // 0.0015 is the "feels okay on a trackpad" constant, derived by sliding it
+        // around until it stopped annoying me
+        let scroll_factor = (-scroll_y as f64 * 0.0015).exp();
+        let factor = scroll_factor / pinch as f64;
+        if (factor - 1.0).abs() > 1e-4 {
+            if let Some(pos) = response.hover_pos() {
+                let dur = app.view.end - app.view.start;
+                let anchor = app.view.start + ((pos.x - rect.left()) as f64
+                    / rect.width() as f64) * dur;
+                app.view.zoom_around(anchor, factor, app.buffer_duration());
+            }
+        }
+    }
 }
