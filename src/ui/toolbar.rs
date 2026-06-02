@@ -2,19 +2,30 @@ use eframe::egui;
 use crate::app::{PraatlyApp, SaveFormat, StatusKind};
 
 pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
-    egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+    // Top row: file / transport / capture — the verbs you reach for first
+    egui::TopBottomPanel::top("toolbar_primary").show(ctx, |ui| {
         ui.horizontal(|ui| {
             file_section(ui, ctx, app);
             ui.separator();
             playback_section(ui, ctx, app);
             ui.separator();
             recording_section(ui, app);
-            ui.separator();
+        });
+    });
+    // Second row: how-you're-looking-at-it controls. Split so the top row
+    // doesn't have to wrap on narrow windows
+    egui::TopBottomPanel::top("toolbar_view").show(ctx, |ui| {
+        ui.horizontal(|ui| {
             zoom_section(ui, app);
             ui.separator();
             view_toggles(ui, app);
             ui.separator();
             panel_toggles(ui, app);
+        });
+    });
+    // Status moved here so a long error string doesn't fight the toolbar buttons
+    egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+        ui.horizontal(|ui| {
             status_label(ui, app);
         });
     });
@@ -200,7 +211,6 @@ fn panel_toggles(ui: &mut egui::Ui, app: &mut PraatlyApp) {
 
 fn status_label(ui: &mut egui::Ui, app: &PraatlyApp) {
     if let Some(status) = &app.ui.status {
-        ui.separator();
         let color = match status.kind {
             StatusKind::Info    => egui::Color32::from_rgb(180, 180, 200),
             StatusKind::Success => egui::Color32::from_rgb(140, 200, 140),
