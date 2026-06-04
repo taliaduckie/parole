@@ -5,11 +5,7 @@
 use eframe::egui;
 use std::path::PathBuf;
 
-mod app;
-mod audio;
-mod dsp;
-mod ui;
-mod annotation;
+use parole::app;
 
 fn main() {
     env_logger::init();
