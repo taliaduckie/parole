@@ -79,8 +79,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     if let Some(tex) = &app.dsp.spectrogram_texture {
         // Total time covered by the (computed) spectrogram. Always ≤ buffer
         // duration because the last partial window gets dropped during compute
-        let total_spec_dur =
-            spec.n_frames() as f64 * spec.hop_size as f64 / spec.sample_rate as f64;
+        let total_spec_dur = spec.frame_to_sec(spec.n_frames());
         if let Some((u0, u1)) = view_uv(app.view.start, app.view.end, total_spec_dur) {
             painter.image(
                 tex.id(),
@@ -112,7 +111,9 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     if app.view.show_formants {
         if let Some(formants) = &app.dsp.formants {
             let dur     = app.view.end - app.view.start;
-            let nyquist = spec.sample_rate as f32 / 2.0;
+            // top bin of the spectrogram == Nyquist; using the helper keeps the
+            // formant overlay's y-scale honest if the bin math ever moves
+            let nyquist = spec.bin_to_hz(spec.n_bins() - 1);
             let colors = [
                 egui::Color32::from_rgb(255, 80, 80),   // F1
                 egui::Color32::from_rgb(80, 255, 120),  // F2
