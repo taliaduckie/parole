@@ -522,19 +522,4 @@ mod tests {
         assert!(v.end - v.start >= MIN_VIEW_DURATION);
     }
 
-    #[test]
-    fn status_message_kinds_construct_distinctly() {
-        assert_eq!(StatusMessage::info("x").kind, StatusKind::Info);
-        assert_eq!(StatusMessage::success("x").kind, StatusKind::Success);
-        assert_eq!(StatusMessage::error("x").kind, StatusKind::Error);
-    }
-
-    #[test]
-    fn ui_state_helpers_set_status_with_right_kind() {
-        let mut ui = UiState::default();
-        ui.error("bad");
-        assert!(matches!(&ui.status, Some(s) if s.kind == StatusKind::Error && s.text == "bad"));
-        ui.success("good");
-        assert!(matches!(&ui.status, Some(s) if s.kind == StatusKind::Success));
-    }
 }

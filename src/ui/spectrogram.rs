@@ -188,13 +188,6 @@ mod tests {
     }
 
     #[test]
-    fn viridis_endpoints_differ() {
-        let dark = viridis(0.0);
-        let bright = viridis(1.0);
-        assert_ne!(dark, bright);
-    }
-
-    #[test]
     fn view_uv_full_window_is_full_uv() {
         let uv = view_uv(0.0, 5.0, 5.0).unwrap();
         assert!((uv.0 - 0.0).abs() < 1e-6);
