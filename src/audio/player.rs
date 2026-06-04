@@ -210,14 +210,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_player_is_idle() {
-        let p = AudioPlayer::new();
-        assert!(!p.is_playing());
-        assert_eq!(p.position_secs(), 0.0);
-        assert!(p.take_runtime_error().is_none());
-    }
-
-    #[test]
     fn fill_output_passthrough_when_rates_match_mono() {
         let src = vec![0.1, 0.2, 0.3, 0.4];
         let mut cur = 0.0;

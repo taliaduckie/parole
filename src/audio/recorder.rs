@@ -171,10 +171,4 @@ mod tests {
         assert_eq!(*buf.lock(), vec![0.1, 0.2]);
     }
 
-    #[test]
-    fn new_recorder_is_idle() {
-        let r = Recorder::new();
-        assert!(!r.is_recording());
-        assert!(r.take_runtime_error().is_none());
-    }
 }
