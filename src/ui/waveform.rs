@@ -47,6 +47,13 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
         );
     }
 
+    // Playhead — only while actively playing; vanishes on stop or end-of-buffer
+    if app.player.is_playing() {
+        crate::ui::paint_playhead(
+            &painter, rect, app.view.start, app.view.end, app.player.position_secs(),
+        );
+    }
+
     // drag to select: first drag sets the anchor, subsequent motion extends from it
     // the .min/.max at the end quietly handles dragging leftward without complaint
     // guarding against an edge case that shouldn't exist but keeps existing anyway heh

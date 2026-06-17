@@ -48,7 +48,7 @@ fn playback_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut PraatlyApp
             app.player.stop();
         } else if let Some(buf) = &app.buffer {
             let (s, e) = app.view.selection.unwrap_or((app.view.start, app.view.end));
-            if let Err(err) = app.player.play(buf.slice_mono(s, e), buf.sample_rate) {
+            if let Err(err) = app.player.play(buf.slice_mono(s, e), buf.sample_rate, s) {
                 app.ui.error(format!("Playback failed: {}", err));
                 log::error!("Playback failed: {}", err);
             }

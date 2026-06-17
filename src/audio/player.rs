@@ -14,6 +14,9 @@ pub struct AudioPlayer {
     /// Fractional read position in source samples
     cursor: Arc<Mutex<f64>>,
     src_rate: Arc<Mutex<u32>>,
+    /// Where in the source file the slice we're playing started — added to
+    /// the cursor time so position_secs() reads as a file-relative timestamp
+    origin_secs: Arc<Mutex<f64>>,
     playing: Arc<AtomicBool>,
     runtime_error: Arc<Mutex<Option<String>>>,
     stream: Option<cpal::Stream>,
@@ -25,6 +28,7 @@ impl AudioPlayer {
             samples: Arc::new(Mutex::new(Vec::new())),
             cursor: Arc::new(Mutex::new(0.0)),
             src_rate: Arc::new(Mutex::new(44100)),
+            origin_secs: Arc::new(Mutex::new(0.0)),
             playing: Arc::new(AtomicBool::new(false)),
             runtime_error: Arc::new(Mutex::new(None)),
             stream: None,
@@ -35,9 +39,12 @@ impl AudioPlayer {
         self.playing.load(Ordering::Relaxed)
     }
 
+    /// Current playback position as a file-relative timestamp (seconds).
+    /// When playing a selection [s, e], this returns s + (how far into the slice)
     pub fn position_secs(&self) -> f64 {
         let sr = *self.src_rate.lock() as f64;
-        if sr <= 0.0 { 0.0 } else { *self.cursor.lock() / sr }
+        let into_slice = if sr <= 0.0 { 0.0 } else { *self.cursor.lock() / sr };
+        *self.origin_secs.lock() + into_slice
     }
 
     pub fn take_runtime_error(&self) -> Option<String> {
@@ -45,8 +52,10 @@ impl AudioPlayer {
     }
 
     /// Start (or restart) playback of `samples` at `sample_rate`
+    /// `origin_secs` is where in the source file `samples[0]` lives — used
+    /// so position_secs() reads as a file-relative time for the playhead overlay
     /// Replaces any in-flight stream
-    pub fn play(&mut self, samples: Vec<f32>, sample_rate: u32) -> Result<()> {
+    pub fn play(&mut self, samples: Vec<f32>, sample_rate: u32, origin_secs: f64) -> Result<()> {
         // Drop any prior stream before installing the new one
         self.stream = None;
         self.playing.store(false, Ordering::Relaxed);
@@ -58,6 +67,7 @@ impl AudioPlayer {
         *self.samples.lock() = samples;
         *self.cursor.lock() = 0.0;
         *self.src_rate.lock() = sample_rate;
+        *self.origin_secs.lock() = origin_secs;
         *self.runtime_error.lock() = None;
 
         let host = cpal::default_host();

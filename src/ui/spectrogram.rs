@@ -131,6 +131,12 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
             }
         }
     }
+
+    if app.player.is_playing() {
+        crate::ui::paint_playhead(
+            &painter, rect, app.view.start, app.view.end, app.player.position_secs(),
+        );
+    }
 }
 
 #[cfg(test)]
