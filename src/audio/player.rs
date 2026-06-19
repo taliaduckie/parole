@@ -14,8 +14,8 @@ pub struct AudioPlayer {
     /// Fractional read position in source samples
     cursor: Arc<Mutex<f64>>,
     src_rate: Arc<Mutex<u32>>,
-    /// Where in the source file the slice we're playing started — added to
-    /// the cursor time so position_secs() reads as a file-relative timestamp
+    /// File-time offset of samples[0]. Lets position_secs() report file time
+    /// when we're playing a selection slice instead of the whole buffer
     origin_secs: Arc<Mutex<f64>>,
     playing: Arc<AtomicBool>,
     runtime_error: Arc<Mutex<Option<String>>>,
@@ -39,8 +39,7 @@ impl AudioPlayer {
         self.playing.load(Ordering::Relaxed)
     }
 
-    /// Current playback position as a file-relative timestamp (seconds).
-    /// When playing a selection [s, e], this returns s + (how far into the slice)
+    /// File-relative playback position in seconds
     pub fn position_secs(&self) -> f64 {
         let sr = *self.src_rate.lock() as f64;
         let into_slice = if sr <= 0.0 { 0.0 } else { *self.cursor.lock() / sr };
@@ -52,8 +51,7 @@ impl AudioPlayer {
     }
 
     /// Start (or restart) playback of `samples` at `sample_rate`
-    /// `origin_secs` is where in the source file `samples[0]` lives — used
-    /// so position_secs() reads as a file-relative time for the playhead overlay
+    /// `origin_secs` is the file-time of `samples[0]` — used by position_secs()
     /// Replaces any in-flight stream
     pub fn play(&mut self, samples: Vec<f32>, sample_rate: u32, origin_secs: f64) -> Result<()> {
         // Drop any prior stream before installing the new one

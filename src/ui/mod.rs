@@ -6,9 +6,7 @@ pub mod settings;
 
 use eframe::egui;
 
-/// Draw a vertical playhead line at file-relative time `t`, clipped to the
-/// visible time window [view_start, view_end]. No-op if the playhead is
-/// outside the window or the window has zero width
+/// Vertical playhead at file-time `t`, clipped to the visible window
 pub fn paint_playhead(
     painter: &egui::Painter,
     rect: egui::Rect,

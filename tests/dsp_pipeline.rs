@@ -1,6 +1,6 @@
-//! end-to-end: synth sine → WAV on disk → load back → DSP
-//! unit tests feed in-memory AudioBuffers so they miss encode/decode mangling
-//! this catches it
+//! synth sine → WAV → load → DSP
+//! unit tests use in-memory AudioBuffers — this is the only thing that
+//! crosses the encode/decode boundary
 
 use parole::audio::{encoder::write_wav_mono_f32, loader::load_audio};
 use parole::dsp::{
@@ -39,7 +39,7 @@ fn wav_roundtrip_through_full_dsp_pipeline() {
     assert_eq!(loaded.channels, 1);
     assert_eq!(loaded.samples.len(), samples.len());
 
-    // bin spacing = sr/n_fft = 16000/1024 ≈ 15.6 Hz, so 200 Hz → bin ~13
+    // bin spacing = 16000/1024 ≈ 15.6 Hz → 200 Hz lands at bin ~13
     let spec = spectrogram::compute(&loaded, 1024, 0.5);
     assert!(spec.n_frames() > 0, "expected at least one STFT frame");
     let mid = &spec.magnitudes[spec.n_frames() / 2];
@@ -62,8 +62,7 @@ fn wav_roundtrip_through_full_dsp_pipeline() {
         median
     );
 
-    // pure sine isn't a great formant target but extract should still
-    // return frames without panicking on the loaded buffer
+    // pure sine is a bad formant target, but extract should still produce frames
     let f = formants::extract(&loaded, FormantSettings::default());
     assert!(!f.frames.is_empty(), "formant track should have frames");
 }
