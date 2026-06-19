@@ -2,7 +2,6 @@ use eframe::egui;
 use crate::app::{PraatlyApp, SaveFormat, StatusKind};
 
 pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
-    // Top row: file / transport / capture — the verbs you reach for first
     egui::TopBottomPanel::top("toolbar_primary").show(ctx, |ui| {
         ui.horizontal(|ui| {
             file_section(ui, ctx, app);
@@ -12,8 +11,7 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
             recording_section(ui, app);
         });
     });
-    // Second row: how-you're-looking-at-it controls. Split so the top row
-    // doesn't have to wrap on narrow windows
+    // split so the top row doesn't wrap on narrow windows
     egui::TopBottomPanel::top("toolbar_view").show(ctx, |ui| {
         ui.horizontal(|ui| {
             zoom_section(ui, app);
@@ -23,7 +21,6 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
             panel_toggles(ui, app);
         });
     });
-    // Status moved here so a long error string doesn't fight the toolbar buttons
     egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
         ui.horizontal(|ui| {
             status_label(ui, app);
