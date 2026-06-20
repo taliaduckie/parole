@@ -111,8 +111,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     if app.view.show_formants {
         if let Some(formants) = &app.dsp.formants {
             let dur     = app.view.end - app.view.start;
-            // top bin of the spectrogram == Nyquist; using the helper keeps the
-            // formant overlay's y-scale honest if the bin math ever moves
+            // top bin == Nyquist
             let nyquist = spec.bin_to_hz(spec.n_bins() - 1);
             let colors = [
                 egui::Color32::from_rgb(255, 80, 80),   // F1
@@ -133,9 +132,8 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
     }
 
     if app.player.is_playing() {
-        crate::ui::paint_playhead(
-            &painter, rect, app.view.start, app.view.end, app.player.position_secs(),
-        );
+        crate::ui::paint_playhead(&painter, rect, app.view.start, app.view.end,
+            app.player.position_secs());
     }
 }
 
