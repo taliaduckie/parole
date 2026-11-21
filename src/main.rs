@@ -26,6 +26,6 @@ fn main() {
         "Parole",
         options,
         // .clone() here because the closure needs to own it and honestly I respect that
-        Box::new(move |cc| Box::new(app::PraatlyApp::new(cc, audio_path.clone()))),
+        Box::new(move |cc| Ok(Box::new(app::PraatlyApp::new(cc, audio_path.clone())))),
     ).expect("Failed to start Parole"); // if this panics we have bigger problems than a comment can address
 }

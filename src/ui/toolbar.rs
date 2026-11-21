@@ -101,7 +101,7 @@ fn recording_section(ui: &mut egui::Ui, app: &mut PraatlyApp) {
     }
 
     // Format selector — always visible so user can pick before recording
-    egui::ComboBox::from_id_source("save_format")
+    egui::ComboBox::from_id_salt("save_format")
         .selected_text(match app.recording.save_format {
             SaveFormat::Wav => "WAV",
             SaveFormat::Mp3 => "MP3",
