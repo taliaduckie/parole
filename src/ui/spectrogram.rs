@@ -246,8 +246,8 @@ mod tests {
         let img = build_image(&s);
         // n_frames = 2, n_bins = 2. Pixel (frame=0, bin=0) is at row=1, col=0;
         // pixel (frame=1, bin=1) is at row=0, col=1
-        let p_lo = img.pixels[1 * 2 + 0];
-        let p_hi = img.pixels[0 * 2 + 1];
+        let p_lo = img.pixels[2];
+        let p_hi = img.pixels[1];
         assert_eq!(p_lo, p_hi);
     }
 }

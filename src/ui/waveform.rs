@@ -32,7 +32,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut PraatlyApp, height: f32) {
         let max = ch.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         painter.line_segment(
             [egui::pos2(x, mid_y - max * scale), egui::pos2(x, mid_y - min * scale)],
-            egui::Stroke::new(1.0, color),
+            egui::Stroke::new(1.0_f32, color),
         );
     }
 

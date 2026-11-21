@@ -19,6 +19,6 @@ pub fn paint_playhead(
     let x = rect.left() + ((t - view_start) / dur) as f32 * rect.width();
     painter.line_segment(
         [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
-        egui::Stroke::new(1.5, egui::Color32::from_rgb(255, 230, 200)),
+        egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(255, 230, 200)),
     );
 }

@@ -48,7 +48,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut crate::app::PraatlyApp, height: f32) {
                 let x0 = rect.left() + ((iv.start - app.view.start) / dur) as f32 * rect.width();
                 let x1 = rect.left() + ((iv.end   - app.view.start) / dur) as f32 * rect.width();
                 let r  = egui::Rect::from_min_max(egui::pos2(x0, ty+18.0), egui::pos2(x1, ty+tier_h-2.0));
-                painter.rect_stroke(r, 2.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(70,70,110)));
+                painter.rect_stroke(r, 2.0, egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(70,70,110)));
                 painter.text(r.center(), egui::Align2::CENTER_CENTER,
                     &iv.label, egui::FontId::default(), egui::Color32::WHITE);
             }

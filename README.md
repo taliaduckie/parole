@@ -9,9 +9,10 @@ Basically spiritual successor to Praat: same capabilities, w dramatically better
 - Spectrogram — STFT with configurable window/overlap, viridis colour map
 - Pitch tracking — autocorrelation F0 extraction
 - Formant analysis — LPC-based F1/F2/F3 with overlay on spectrogram
-- TextGrid annotation — interval and point tiers, keyboard-driven
+- TextGrid — in-progress data model and read-only interval renderer
 - Audio playback — play selection or full file
-- Scripting — Lua 5.4 scripting layer (replacing Praat's bespoke language)
+
+Planned: interactive TextGrid editing and user-facing Lua scripting.
 
 ## Tech stack
 
@@ -27,9 +28,18 @@ Basically spiritual successor to Praat: same capabilities, w dramatically better
 ## Build
 
 ```bash
-cargo build --release
-cargo run --release -- path/to/audio.wav
+cargo build --locked --release
+cargo run --locked --release -- path/to/audio.wav
 ```
+
+To run the checks locally (also run by CI):
+
+```bash
+cargo test --locked
+cargo clippy --locked --all-targets
+```
+
+On Ubuntu, install `libasound2-dev` and `pkg-config` first. CI runs the locked checks on stable Rust on Linux and macOS.
 
 ## Why Rust?
 
