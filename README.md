@@ -1,7 +1,8 @@
 # Parole
 
 A phonetic analysis workbench built in Rust.
-Basically spiritual successor to Praat: same capabilities, w dramatically better UX. at least that's the intent.
+The goal is a faster, easier annotation and analysis workflow than Praat.
+Parole is still a prototype; see the [roadmap](docs/ROADMAP.md) for what's missing.
 
 ## Features (in progress)
 
@@ -9,10 +10,20 @@ Basically spiritual successor to Praat: same capabilities, w dramatically better
 - Spectrogram — STFT with configurable window/overlap, viridis colour map
 - Pitch tracking — autocorrelation F0 extraction
 - Formant analysis — LPC-based F1/F2/F3 with overlay on spectrogram
-- TextGrid — in-progress data model and read-only interval renderer
+- TextGrid — import Praat text files, view interval and point tiers, edit labels, and export a copy
 - Audio playback — play selection or full file
 
-Planned: interactive TextGrid editing and user-facing Lua scripting.
+## Working with a TextGrid
+
+1. Open the associated audio file.
+2. Choose **Open TextGrid…** and select the annotation file. Both long and
+   short Praat text formats are supported, with UTF-8 or BOM-marked UTF-16.
+3. Edit labels in **TextGrid annotations**. Times, boundaries and tier
+   definitions are read-only for now.
+4. Choose **Save TextGrid copy…** and give it a new name. The copy uses Praat's
+   long text format; existing files are never overwritten.
+
+If you have a binary TextGrid, open it in Praat and save it as text first.
 
 ## Tech stack
 
@@ -43,7 +54,6 @@ On Ubuntu, install `libasound2-dev` and `pkg-config` first. CI runs the locked c
 
 ## Why Rust?
 
-Praat's DSP is fast because it's C++. Python-based alternatives
-(parselmouth, librosa) are too slow for interactive real-time rendering.
-Rust gives the same performance with memory safety and a modern
-ecosystem. Yay Rust! 
+Rust lets Parole run signal processing off the UI thread and ship as a native
+desktop app. Performance and measurement agreement with Praat still need
+direct benchmarks.
