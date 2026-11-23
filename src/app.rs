@@ -2,7 +2,8 @@
 //! this file has several jobs and handles most of them with dignity
 
 use eframe::egui;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -193,6 +194,8 @@ impl ViewState {
 pub struct UiState {
     pub show_help:     bool,
     pub show_settings: bool,
+    pub show_textgrid_editor: bool,
+    pub confirm_discard_textgrid: bool,
     pub status:        Option<StatusMessage>,
 }
 
@@ -211,6 +214,9 @@ impl UiState {
 pub struct PraatlyApp {
     pub buffer:    Option<Arc<AudioBuffer>>,
     pub textgrid:  TextGrid,
+    pub textgrid_path: Option<PathBuf>,
+    pub textgrid_dirty: bool,
+    pub audio_path: Option<PathBuf>,
     pub player:    AudioPlayer,
 
     pub recording: RecordingState,
@@ -230,6 +236,9 @@ impl PraatlyApp {
         let mut app = Self {
             buffer:    None,
             textgrid:  TextGrid::default(),
+            textgrid_path: None,
+            textgrid_dirty: false,
+            audio_path: None,
             player:    AudioPlayer::new(),
             recording: RecordingState::new(),
             dsp:       DspResults::default(),
@@ -246,9 +255,16 @@ impl PraatlyApp {
     }
 
     pub fn load_file(&mut self, path: PathBuf, ctx: &egui::Context) {
+        if self.textgrid_dirty {
+            self.ui.error("Save a TextGrid copy or discard edits before opening other audio.");
+            return;
+        }
         match crate::audio::loader::load_audio(&path) {
             Ok(buf) => {
-                self.view.end = buf.duration_secs();
+                self.close_textgrid();
+                self.audio_path = Some(path.clone());
+                self.view.zoom_to_full(Some(buf.duration_secs()));
+                self.view.selection = None;
                 let buf = Arc::new(buf);
 
                 // Wipe any stale results — old data is for the wrong file now,
@@ -266,6 +282,54 @@ impl PraatlyApp {
                 self.ui.error(format!("Couldn't load file: {}", e));
             }
         }
+    }
+
+    pub fn open_textgrid(&mut self, path: PathBuf) {
+        if self.buffer.is_none() || self.textgrid_dirty {
+            self.ui.error("Open audio first, and save or discard any existing annotation edits.");
+            return;
+        }
+        let parsed = std::fs::read(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| TextGrid::from_bytes(&bytes).map_err(|e| e.to_string()));
+        match parsed {
+            Ok(grid) => {
+                self.textgrid = grid;
+                self.textgrid_path = Some(path);
+                self.textgrid_dirty = false;
+                self.view.show_textgrid = true;
+                self.ui.show_textgrid_editor = true;
+                self.ui.success("Opened TextGrid.");
+            }
+            Err(e) => self.ui.error(format!("Couldn't open {}: {e}", path.display())),
+        }
+    }
+
+    pub fn save_textgrid_copy(&mut self, path: PathBuf) {
+        if self.textgrid_path.is_none() {
+            self.ui.error("No TextGrid is open.");
+            return;
+        }
+        let result = self.textgrid.to_praat_long()
+            .map_err(|e| e.to_string())
+            .and_then(|content| write_new_textgrid(&path, content.as_bytes()).map_err(|e| e.to_string()));
+        match result {
+            Ok(()) => {
+                self.textgrid_path = Some(path);
+                self.textgrid_dirty = false;
+                self.ui.confirm_discard_textgrid = false;
+                self.ui.success("Saved TextGrid copy.");
+            }
+            Err(e) => self.ui.error(format!("Couldn't save {}: {e}", path.display())),
+        }
+    }
+
+    pub fn close_textgrid(&mut self) {
+        self.textgrid = TextGrid::default();
+        self.textgrid_path = None;
+        self.textgrid_dirty = false;
+        self.ui.show_textgrid_editor = false;
+        self.ui.confirm_discard_textgrid = false;
     }
 
     /// Re-run the spectrogram pass with the current settings, on a worker thread
@@ -370,26 +434,51 @@ impl PraatlyApp {
     }
 }
 
+/// Save to a previously absent file, never truncate an existing annotation
+/// (even if it was created after the dialog opened).
+fn write_new_textgrid(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+    let result = file.write_all(bytes).and_then(|()| file.sync_all());
+    if result.is_err() {
+        drop(file);
+        let _ = std::fs::remove_file(path);
+    }
+    result
+}
+
+fn apply_zoom_shortcuts(ctx: &egui::Context, view: &mut ViewState, duration: Option<f64>) {
+    if ctx.wants_keyboard_input() {
+        return;
+    }
+    let (zoom_sel, zoom_all) = ctx.input(|i| (
+        i.key_pressed(egui::Key::Z) && !i.modifiers.shift,
+        (i.key_pressed(egui::Key::Z) && i.modifiers.shift) || i.key_pressed(egui::Key::A),
+    ));
+    if zoom_sel {
+        view.zoom_to_selection();
+    }
+    if zoom_all {
+        view.zoom_to_full(duration);
+    }
+}
+
 impl eframe::App for PraatlyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Pick up any DSP results that finished between frames. Cheap; try_recv is non-blocking
         self.poll_dsp_jobs();
 
+        if self.textgrid_dirty && ctx.input(|i| i.viewport().close_requested()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.ui.show_textgrid_editor = true;
+            self.ui.error("Unsaved TextGrid edits. Save a copy or explicitly discard them, then close again.");
+        }
+
         // Keyboard shortcuts
-        let (toggle_help, zoom_sel, zoom_all) = ctx.input(|i| (
-            i.key_pressed(egui::Key::F1),
-            i.key_pressed(egui::Key::Z) && !i.modifiers.shift,
-            (i.key_pressed(egui::Key::Z) && i.modifiers.shift) || i.key_pressed(egui::Key::A),
-        ));
-        if toggle_help {
+        if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
             self.ui.show_help = !self.ui.show_help;
         }
-        if zoom_sel {
-            self.view.zoom_to_selection();
-        }
-        if zoom_all {
-            self.view.zoom_to_full(self.buffer_duration());
-        }
+        let duration = self.buffer_duration();
+        apply_zoom_shortcuts(ctx, &mut self.view, duration);
 
         crate::ui::toolbar::show(ctx, self);
 
@@ -399,6 +488,10 @@ impl eframe::App for PraatlyApp {
         }
         if self.ui.show_settings {
             crate::ui::settings::show(ctx, self);
+        }
+
+        if self.ui.show_textgrid_editor {
+            crate::ui::textgrid_editor::show(ctx, self);
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -419,10 +512,54 @@ mod tests {
     use super::*;
 
     fn view(start: f64, end: f64) -> ViewState {
-        let mut v = ViewState::default();
-        v.start = start;
-        v.end = end;
-        v
+        ViewState { start, end, ..ViewState::default() }
+    }
+
+    #[test]
+    fn editing_multiline_annotation_does_not_zoom() {
+        let ctx = egui::Context::default();
+        let mut label = String::from("first\nsecond");
+        let mut view = view(1.0, 6.0);
+        view.selection = Some((2.0, 4.0));
+
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                crate::ui::textgrid_editor::label_field(ui, &mut label).request_focus();
+            });
+        });
+        assert_eq!(label, "first\nsecond");
+
+        let mut input = egui::RawInput::default();
+        input.events.extend([
+            egui::Event::Key {
+                key: egui::Key::Z,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::Text("z".to_owned()),
+        ]);
+        let _ = ctx.run(input, |ctx| {
+            assert!(ctx.wants_keyboard_input());
+            apply_zoom_shortcuts(ctx, &mut view, Some(10.0));
+            egui::CentralPanel::default().show(ctx, |ui| {
+                assert!(crate::ui::textgrid_editor::label_field(ui, &mut label).changed());
+            });
+        });
+        assert_eq!(label.matches('\n').count(), 1);
+        assert_eq!(label.replace('z', ""), "first\nsecond");
+        assert_eq!((view.start, view.end, view.selection), (1.0, 6.0, Some((2.0, 4.0))));
+    }
+
+    #[test]
+    fn annotation_save_refuses_to_overwrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("annotation.TextGrid");
+        write_new_textgrid(&path, b"original").unwrap();
+        let error = write_new_textgrid(&path, b"replacement").unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(path).unwrap(), b"original");
     }
 
     #[test]

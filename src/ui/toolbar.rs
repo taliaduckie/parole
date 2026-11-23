@@ -13,12 +13,14 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
     });
     // split so the top row doesn't wrap on narrow windows
     egui::TopBottomPanel::top("toolbar_view").show(ctx, |ui| {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             zoom_section(ui, app);
             ui.separator();
             view_toggles(ui, app);
             ui.separator();
             panel_toggles(ui, app);
+            ui.separator();
+            textgrid_section(ui, app);
         });
     });
     egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
@@ -29,11 +31,27 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
 }
 
 fn file_section(ui: &mut egui::Ui, ctx: &egui::Context, app: &mut PraatlyApp) {
-    if ui.button("Open…").clicked() {
+    if ui.add_enabled(!app.textgrid_dirty, egui::Button::new("Open…"))
+        .on_disabled_hover_text("Save or discard the unsaved TextGrid first.").clicked()
+    {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("Audio", &["wav", "flac", "mp3", "aiff"])
             .pick_file()
         { app.load_file(path, ctx); }
+    }
+}
+
+fn textgrid_section(ui: &mut egui::Ui, app: &mut PraatlyApp) {
+    if ui.add_enabled(app.buffer.is_some() && !app.textgrid_dirty, egui::Button::new("Open TextGrid…"))
+        .on_disabled_hover_text("Open audio and save or discard any unsaved TextGrid first.").clicked()
+    {
+        crate::ui::textgrid_editor::open_dialog(app);
+    }
+    if app.textgrid_path.is_some() {
+        let label = if app.textgrid_dirty { "Edit TextGrid *" } else { "Edit TextGrid" };
+        if ui.button(label).clicked() {
+            app.ui.show_textgrid_editor = true;
+        }
     }
 }
 

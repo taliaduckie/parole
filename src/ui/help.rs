@@ -52,8 +52,8 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
                                      Unvoiced frames are blank. Toggle with the Pitch checkbox.");
             row(ui, "Formants",     "F1/F2/F3 via LPC. Overlay on spectrogram. \
                                      (Implementation in progress — currently stubbed.)");
-            row(ui, "TextGrid",     "Annotation tiers. Interval and point tiers supported. \
-                                     Toggle with the TextGrid checkbox.");
+            row(ui, "TextGrid",     "Open a TextGrid next to audio; view interval and point tiers. \
+                                     Edit labels and save to a new file from Edit TextGrid.");
 
             ui.add_space(8.0);
 
@@ -92,7 +92,7 @@ pub fn show(ctx: &egui::Context, app: &mut PraatlyApp) {
                 egui::RichText::new(
                     "• Formant extraction (LPC root-finding) is currently stubbed — \
                        F1/F2/F3 overlays are not yet rendered.\n\
-                     • TextGrid import/export (.TextGrid format) is not yet implemented."
+                     • TextGrid times, tier structure and boundaries are read-only. Save edits to a new file."
                 )
                 .weak()
                 .small()

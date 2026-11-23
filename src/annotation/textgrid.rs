@@ -38,22 +38,52 @@ pub fn show(ui: &mut egui::Ui, app: &mut crate::app::PraatlyApp, height: f32) {
     }
 
     let dur    = app.view.end - app.view.start;
+    if !dur.is_finite() || dur <= 0.0 {
+        return;
+    }
     let tier_h = height / app.textgrid.tiers.len() as f32;
+    let x = |time: f64| rect.left() + ((time - app.view.start) / dur) as f32 * rect.width();
 
     for (ti, tier) in app.textgrid.tiers.iter().enumerate() {
         let ty = rect.top() + ti as f32 * tier_h;
         painter.text(egui::pos2(rect.left() + 4.0, ty + 8.0), egui::Align2::LEFT_TOP,
             tier.name(), egui::FontId::monospace(11.0), egui::Color32::GRAY);
 
-        if let Tier::Interval { intervals, .. } = tier {
-            for iv in intervals {
-                if iv.end < app.view.start || iv.start > app.view.end { continue; }
-                let x0 = rect.left() + ((iv.start - app.view.start) / dur) as f32 * rect.width();
-                let x1 = rect.left() + ((iv.end   - app.view.start) / dur) as f32 * rect.width();
-                let r  = egui::Rect::from_min_max(egui::pos2(x0, ty+18.0), egui::pos2(x1, ty+tier_h-2.0));
-                painter.rect_stroke(r, 2.0, egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(70,70,110)));
-                painter.text(r.center(), egui::Align2::CENTER_CENTER,
-                    &iv.label, egui::FontId::default(), egui::Color32::WHITE);
+        let row = egui::Rect::from_min_max(
+            egui::pos2(rect.left(), ty),
+            egui::pos2(rect.right(), ty + tier_h),
+        );
+        let row_painter = painter.with_clip_rect(row);
+        if tier_h <= 20.0 { continue; }
+
+        match tier {
+            Tier::Interval { intervals, .. } => {
+                for interval in intervals {
+                    if interval.end < app.view.start || interval.start > app.view.end { continue; }
+                    let r = egui::Rect::from_min_max(
+                        egui::pos2(x(interval.start.max(app.view.start)), ty + 18.0),
+                        egui::pos2(x(interval.end.min(app.view.end)), ty + tier_h - 2.0),
+                    );
+                    let clipped = row_painter.with_clip_rect(r);
+                    row_painter.rect_stroke(r, 2.0, egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(70, 70, 110)));
+                    clipped.text(r.center(), egui::Align2::CENTER_CENTER, &interval.label,
+                        egui::FontId::default(), egui::Color32::WHITE);
+                }
+            }
+            Tier::Point { points, .. } => {
+                for point in points {
+                    if point.time < app.view.start || point.time > app.view.end { continue; }
+                    let px = x(point.time);
+                    let top = ty + 18.0;
+                    let bottom = ty + tier_h - 2.0;
+                    row_painter.line_segment(
+                        [egui::pos2(px, top), egui::pos2(px, bottom)],
+                        egui::Stroke::new(1.0_f32, egui::Color32::LIGHT_BLUE),
+                    );
+                    row_painter.text(egui::pos2(px, (top + bottom) * 0.5),
+                        egui::Align2::CENTER_CENTER, &point.label,
+                        egui::FontId::default(), egui::Color32::WHITE);
+                }
             }
         }
     }

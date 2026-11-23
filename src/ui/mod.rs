@@ -3,6 +3,7 @@ pub mod spectrogram;
 pub mod toolbar;
 pub mod help;
 pub mod settings;
+pub mod textgrid_editor;
 
 use eframe::egui;
 
