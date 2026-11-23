@@ -1,16 +1,19 @@
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+mod praat;
+pub use praat::TextGridError;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Interval { pub start: f64, pub end: f64, pub label: String }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Point { pub time: f64, pub label: String }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Tier {
-    Interval { name: String, intervals: Vec<Interval> },
-    Point    { name: String, points:    Vec<Point>    },
+    Interval { name: String, xmin: f64, xmax: f64, intervals: Vec<Interval> },
+    Point    { name: String, xmin: f64, xmax: f64, points:    Vec<Point>    },
 }
 
 impl Tier {
@@ -19,8 +22,8 @@ impl Tier {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct TextGrid { pub tiers: Vec<Tier> }
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextGrid { pub xmin: f64, pub xmax: f64, pub tiers: Vec<Tier> }
 
 pub fn show(ui: &mut egui::Ui, app: &mut crate::app::PraatlyApp, height: f32) {
     let (rect, _) = ui.allocate_exact_size(
